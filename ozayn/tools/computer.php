@@ -5,13 +5,95 @@
  */
 
 class ComputerTools {
-    
+
+    /**
+     * Root directory that all file operations are confined to.
+     * Prevents arbitrary file read/write/delete outside the app data dir.
+     */
+    private $baseDir;
+
+    public function __construct() {
+        $base = getenv('OZAYN_DATA_DIR');
+        if ($base) {
+            $this->baseDir = rtrim($base, '/\\') . DIRECTORY_SEPARATOR;
+        } else {
+            // Default: a "files" directory inside the project root, kept out of the web root.
+            $this->baseDir = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'files' . DIRECTORY_SEPARATOR;
+        }
+        if (!is_dir($this->baseDir)) {
+            @mkdir($this->baseDir, 0755, true);
+        }
+    }
+
+    /**
+     * Resolve $path to an absolute path confined within the base directory.
+     * Works on both Linux and Windows. Returns null if the path escapes the sandbox.
+     */
+    private function resolveSafePath($path) {
+        // Remove null bytes
+        $path = str_replace("\0", '', (string) $path);
+
+        // Normalize slashes for consistent handling across OSes
+        $path = str_replace('\\', '/', $path);
+        $base = str_replace('\\', '/', $this->baseDir);
+
+        // Expand ~ to the base directory home
+        if (strpos($path, '~') === 0) {
+            $path = rtrim($base, '/') . '/' . ltrim(substr($path, 1), '/');
+        }
+
+        // Relative paths are relative to the base directory.
+        // An absolute path is one that starts with "/" or a drive letter "C:".
+        $isAbsolute = ($path[0] ?? '') === '/'
+            || preg_match('#^[A-Za-z]:/#', $path);
+
+        if (!$isAbsolute) {
+            $path = rtrim($base, '/') . '/' . ltrim($path, '/');
+        }
+
+        $path = str_replace('\\', '/', $path);
+
+        // Normalize and verify it stays inside the base directory.
+        // realpath() fails for not-yet-existing files, so fall back to the parent dir.
+        $real = realpath($path);
+        if ($real === false) {
+            $parent = realpath(dirname($path));
+            if ($parent === false) {
+                return null;
+            }
+            $candidate = rtrim($parent, '/') . '/' . basename($path);
+        } else {
+            $candidate = $real;
+        }
+
+        $baseReal = realpath($base);
+        if ($baseReal === false) {
+            $baseReal = $base;
+        }
+        $baseReal = rtrim(str_replace('\\', '/', $baseReal), '/');
+        $candidate = rtrim(str_replace('\\', '/', $candidate), '/');
+
+        // Case-insensitive prefix check is required on Windows
+        $match = strncasecmp($candidate, $baseReal, strlen($baseReal)) === 0
+            && ($candidate === $baseReal || $candidate[strlen($baseReal)] === '/');
+
+        if (!$match) {
+            return null;
+        }
+
+        $result = $real === false ? $candidate : $real;
+        return str_replace('/', DIRECTORY_SEPARATOR, $result);
+    }
+
     /**
      * List files in directory
      */
     public function listFiles($path = '.', $recursive = false) {
-        $path = $this->sanitizePath($path);
-        
+        $path = $this->resolveSafePath($path);
+        if ($path === null) {
+            return ['error' => 'Access denied: path is outside the allowed directory'];
+        }
+
         if (!is_dir($path)) {
             return ['error' => "Directory not found: {$path}"];
         }
@@ -44,8 +126,11 @@ class ComputerTools {
      * Read file contents
      */
     public function readFile($path, $maxSize = 1048576) {
-        $path = $this->sanitizePath($path);
-        
+        $path = $this->resolveSafePath($path);
+        if ($path === null) {
+            return ['error' => 'Access denied: path is outside the allowed directory'];
+        }
+
         if (!file_exists($path)) {
             return ['error' => "File not found: {$path}"];
         }
@@ -82,8 +167,11 @@ class ComputerTools {
      * Write file contents
      */
     public function writeFile($path, $content, $append = false) {
-        $path = $this->sanitizePath($path);
-        
+        $path = $this->resolveSafePath($path);
+        if ($path === null) {
+            return ['error' => 'Access denied: path is outside the allowed directory'];
+        }
+
         // Create directory if not exists
         $dir = dirname($path);
         if (!is_dir($dir)) {
@@ -112,8 +200,11 @@ class ComputerTools {
      * Create directory
      */
     public function createDirectory($path) {
-        $path = $this->sanitizePath($path);
-        
+        $path = $this->resolveSafePath($path);
+        if ($path === null) {
+            return ['error' => 'Access denied: path is outside the allowed directory'];
+        }
+
         if (is_dir($path)) {
             return ['error' => "Directory already exists: {$path}"];
         }
@@ -129,8 +220,11 @@ class ComputerTools {
      * Delete file or directory
      */
     public function delete($path) {
-        $path = $this->sanitizePath($path);
-        
+        $path = $this->resolveSafePath($path);
+        if ($path === null) {
+            return ['error' => 'Access denied: path is outside the allowed directory'];
+        }
+
         if (!file_exists($path)) {
             return ['error' => "Path not found: {$path}"];
         }
@@ -158,8 +252,8 @@ class ComputerTools {
      * Copy file
      */
     public function copyFile($source, $destination) {
-        $source = $this->sanitizePath($source);
-        $destination = $this->sanitizePath($destination);
+        $source = $this->resolveSafePath($source);
+        $destination = $this->resolveSafePath($destination);
         
         if (!file_exists($source)) {
             return ['error' => "Source not found: {$source}"];
@@ -185,8 +279,8 @@ class ComputerTools {
      * Move/rename file
      */
     public function moveFile($source, $destination) {
-        $source = $this->sanitizePath($source);
-        $destination = $this->sanitizePath($destination);
+        $source = $this->resolveSafePath($source);
+        $destination = $this->resolveSafePath($destination);
         
         if (!file_exists($source)) {
             return ['error' => "Source not found: {$source}"];
@@ -207,7 +301,7 @@ class ComputerTools {
      * Search files by name pattern
      */
     public function searchFiles($path, $pattern, $maxResults = 50) {
-        $path = $this->sanitizePath($path);
+        $path = $this->resolveSafePath($path);
         
         if (!is_dir($path)) {
             return ['error' => "Directory not found: {$path}"];
@@ -243,7 +337,7 @@ class ComputerTools {
      * Search file contents
      */
     public function grep($path, $pattern, $maxResults = 50) {
-        $path = $this->sanitizePath($path);
+        $path = $this->resolveSafePath($path);
         
         if (!file_exists($path)) {
             return ['error' => "Path not found: {$path}"];
@@ -307,55 +401,100 @@ class ComputerTools {
     }
 
     /**
-     * Run shell command (restricted)
+     * Run shell command (restricted, no shell, no interpreters)
      */
     public function runCommand($command, $timeout = 30) {
-        // Whitelist allowed commands
-        $allowed = ['ls', 'pwd', 'whoami', 'date', 'uptime', 'df', 'du', 'free', 
-                    'cat', 'head', 'tail', 'wc', 'grep', 'find', 'which', 'echo',
-                    'php', 'python', 'node', 'git'];
-        
-        // Block dangerous patterns
-        $dangerous = ['rm -rf', 'mkfs', 'dd if=', ':(){:', 'fork', 'wget', 'curl', 
-                      'chmod 777', 'chown', 'sudo', 'su -', '/etc/passwd', '/etc/shadow',
-                      ';', '|', '&', '`', '$(', '${', '>', '>>', '<'];
-        
-        $commandLower = strtolower($command);
-        foreach ($dangerous as $pattern) {
-            if (strpos($commandLower, $pattern) !== false) {
-                return ['error' => "Dangerous pattern detected: {$pattern}"];
-            }
-        }
-        
-        $cmdParts = preg_split('/\s+/', trim($command));
+        $isWindows = stripos(PHP_OS, 'WIN') === 0;
+
+        // Only safe, read-only system-info commands. No interpreters (php/python/node/git)
+        // so the sandbox cannot be used to execute arbitrary code.
+        $allowed = ['ls', 'pwd', 'whoami', 'date', 'uptime', 'df', 'du', 'free',
+                    'cat', 'head', 'tail', 'wc', 'grep', 'which', 'echo', 'uname',
+                    'dir', 'ver', 'type', 'hostname', 'tasklist', 'systeminfo'];
+
+        // Never permit code interpreters / shells.
+        $forbidden = ['php', 'php.exe', 'python', 'python.exe', 'python3', 'py',
+                      'node', 'node.exe', 'git', 'git.exe', 'cmd', 'cmd.exe',
+                      'powershell', 'powershell.exe', 'sh', 'bash', 'wscript', 'cscript'];
+        $cmdLower = strtolower(trim($command));
+
+        $cmdParts = preg_split('/\s+/', $cmdLower);
         if (empty($cmdParts)) {
             return ['error' => 'Empty command'];
         }
-        
-        $baseCmd = basename($cmdParts[0]);
-        
-        if (!in_array($baseCmd, $allowed)) {
+        $baseCmd = strtolower(basename($cmdParts[0]));
+
+        if (in_array($baseCmd, $forbidden, true)) {
+            return ['error' => "Command not allowed: {$baseCmd}"];
+        }
+        if (!in_array($baseCmd, $allowed, true)) {
             return ['error' => "Command not allowed: {$baseCmd}"];
         }
 
-        // Escape all arguments except the first (command)
-        $escaped = [$baseCmd];
-        for ($i = 1; $i < count($cmdParts); $i++) {
-            $escaped[] = escapeshellarg($cmdParts[$i]);
+        // Resolve the real executable path via the OS so we run a known binary,
+        // and execute with proc_open (no shell) so metacharacters are inert.
+        $exe = $this->findExecutable($baseCmd, $isWindows);
+        if ($exe === null) {
+            return ['error' => "Command not found: {$baseCmd}"];
         }
-        $safeCommand = implode(' ', $escaped);
 
-        $output = [];
-        $returnCode = 0;
-        
-        exec($safeCommand . " 2>&1", $output, $returnCode);
-        
+        $argv = [$exe];
+        for ($i = 1; $i < count($cmdParts); $i++) {
+            $argv[] = $cmdParts[$i];
+        }
+
+        $proc = proc_open(
+            $argv,
+            [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ],
+            $pipes
+        );
+
+        if (!is_resource($proc)) {
+            return ['error' => 'Failed to start command'];
+        }
+
+        fclose($pipes[0]);
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $returnCode = proc_close($proc);
+
+        $result = trim($stdout . "\n" . $stderr);
+
         return [
-            'command' => $safeCommand,
-            'output' => implode("\n", $output),
+            'command' => implode(' ', $argv),
+            'output' => $result,
             'return_code' => $returnCode,
             'success' => $returnCode === 0
         ];
+    }
+
+    /**
+     * Locate an allowed executable without invoking a shell.
+     * On Windows uses where.exe; on Unix uses which. Returns null if not found.
+     */
+    private function findExecutable($cmd, $isWindows) {
+        if ($isWindows) {
+            $out = [];
+            $rc = 0;
+            exec('where ' . escapeshellarg($cmd) . ' 2>nul', $out, $rc);
+            if ($rc !== 0 || empty($out)) {
+                return null;
+            }
+            return $out[0];
+        }
+        $out = [];
+        $rc = 0;
+        exec('command -v ' . escapeshellarg($cmd) . ' 2>/dev/null', $out, $rc);
+        if ($rc !== 0 || empty($out)) {
+            return null;
+        }
+        return $out[0];
     }
 
     /**
@@ -369,8 +508,11 @@ class ComputerTools {
      * Change directory (returns new path, doesn't actually change)
      */
     public function resolvePath($path) {
-        $path = $this->sanitizePath($path);
-        
+        $path = $this->resolveSafePath($path);
+        if ($path === null) {
+            return ['error' => 'Access denied: path is outside the allowed directory'];
+        }
+
         if (is_dir($path)) {
             return ['path' => realpath($path)];
         }
@@ -382,8 +524,11 @@ class ComputerTools {
      * Get file stats
      */
     public function stat($path) {
-        $path = $this->sanitizePath($path);
-        
+        $path = $this->resolveSafePath($path);
+        if ($path === null) {
+            return ['error' => 'Access denied: path is outside the allowed directory'];
+        }
+
         if (!file_exists($path)) {
             return ['error' => "File not found: {$path}"];
         }
@@ -408,8 +553,11 @@ class ComputerTools {
      * Watch file for changes
      */
     public function watchFile($path, $callback = null) {
-        $path = $this->sanitizePath($path);
-        
+        $path = $this->resolveSafePath($path);
+        if ($path === null) {
+            return ['error' => 'Access denied: path is outside the allowed directory'];
+        }
+
         if (!file_exists($path)) {
             return ['error' => "File not found: {$path}"];
         }
@@ -421,29 +569,6 @@ class ComputerTools {
             'last_modified' => date('Y-m-d H:i:s', $lastModified),
             'message' => 'Use polling to check for changes'
         ];
-    }
-
-    /**
-     * Sanitize file path
-     */
-    private function sanitizePath($path) {
-        // Remove null bytes
-        $path = str_replace("\0", '', $path);
-        
-        // Expand ~ to home directory
-        if (strpos($path, '~') === 0) {
-            $path = $_SERVER['HOME'] . substr($path, 1);
-        }
-        
-        // Make relative paths absolute
-        if (strpos($path, '/') !== 0) {
-            $path = getcwd() . '/' . $path;
-        }
-        
-        // Resolve .. and .
-        $path = realpath($path) ?: $path;
-        
-        return $path;
     }
 
     /**
