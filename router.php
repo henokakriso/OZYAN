@@ -45,6 +45,21 @@ if ($path === '/ozayn/dashboard') {
 // Serve static files from ozayn/frontend/
 if (strpos($path, '/ozayn/') === 0) {
     $relativePath = substr($path, strlen('/ozayn/'));
+
+    // Security: block access to sensitive app data and config over HTTP,
+    // even when using the built-in PHP dev server (php -S). These contain
+    // the SQLite DB (password hashes + session IDs), API keys, logs and backups.
+    $blockedPrefixes = [
+        'database/', 'backend/config/', 'logs/', 'backups/', 'data/', 'install.php'
+    ];
+    foreach ($blockedPrefixes as $prefix) {
+        if (strpos($relativePath, $prefix) === 0) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Forbidden']);
+            exit();
+        }
+    }
+
     $filePath = __DIR__ . '/ozayn/frontend/' . $relativePath;
     
     // Security: prevent directory traversal

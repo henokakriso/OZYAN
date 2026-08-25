@@ -222,6 +222,22 @@ server {
 
     client_max_body_size 10M;
 
+    # Block direct access to sensitive app data and config (DB, keys, logs, backups)
+    location ~ ^/ozayn/(database|backend/config|logs|backups|data)/ {
+        deny all;
+        return 403;
+    }
+
+    location = /ozayn/install.php {
+        deny all;
+        return 403;
+    }
+
+    location ~ ^/ozayn/\. {
+        deny all;
+        return 403;
+    }
+
     # PHP API
     location /ozayn/backend/ {
         root $OZAYN_PARENT;
