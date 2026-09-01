@@ -150,6 +150,13 @@ int ozayn_fs_exists(const char *path) {
     return attr != INVALID_FILE_ATTRIBUTES;
 }
 
+int ozayn_fs_is_file(const char *path) {
+    if (!path) return 0;
+    DWORD attr = GetFileAttributesA(path);
+    if (attr == INVALID_FILE_ATTRIBUTES) return 0;
+    return (attr & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
 int ozayn_fs_is_dir(const char *path) {
     if (!path) return 0;
     DWORD attr = GetFileAttributesA(path);
@@ -161,6 +168,12 @@ ozayn_result_t ozayn_fs_mkdir(const char *path) {
     if (!path) return OZAYN_ERR_NULL;
     if (CreateDirectoryA(path, NULL)) return OZAYN_OK;
     if (GetLastError() == ERROR_ALREADY_EXISTS) return OZAYN_OK;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_fs_rmdir(const char *path) {
+    if (!path) return OZAYN_ERR_NULL;
+    if (RemoveDirectoryA(path)) return OZAYN_OK;
     return OZAYN_ERR;
 }
 
@@ -201,6 +214,31 @@ int64_t ozayn_fs_write(const char *path, const void *data, uint64_t size) {
     BOOL ok = WriteFile(h, data, (DWORD)size, &written, NULL);
     CloseHandle(h);
     return ok ? (int64_t)written : -1;
+}
+
+int64_t ozayn_fs_append(const char *path, const void *data, uint64_t size) {
+    if (!path || !data) return -1;
+    HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, NULL,
+                           OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) return -1;
+    DWORD written = 0;
+    SetFilePointer(h, 0, NULL, FILE_END);
+    BOOL ok = WriteFile(h, data, (DWORD)size, &written, NULL);
+    CloseHandle(h);
+    return ok ? (int64_t)written : -1;
+}
+
+ozayn_result_t ozayn_fs_copy(const char *source, const char *dest) {
+    if (!source || !dest) return OZAYN_ERR_NULL;
+    if (!ozayn_fs_is_file(source)) return OZAYN_ERR;
+    if (CopyFileA(source, dest, FALSE)) return OZAYN_OK;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_fs_move(const char *source, const char *dest) {
+    if (!source || !dest) return OZAYN_ERR_NULL;
+    if (MoveFileA(source, dest)) return OZAYN_OK;
+    return OZAYN_ERR;
 }
 
 static char home_buf[OZAYN_MAX_PATH];

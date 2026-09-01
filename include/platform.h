@@ -102,16 +102,22 @@ ozayn_result_t ozayn_process_signal(uint32_t pid, int signal);
  * C. File System / Storage
  * ================================================================ */
 
-/* Check if path exists. Returns 1 if exists, 0 otherwise. */
+/* Check if path exists (file or directory). Returns 1 if exists, 0 otherwise. */
 int ozayn_fs_exists(const char *path);
+
+/* Check if path is a regular file. Returns 1 if file, 0 otherwise. */
+int ozayn_fs_is_file(const char *path);
 
 /* Check if path is a directory. Returns 1 if directory, 0 otherwise. */
 int ozayn_fs_is_dir(const char *path);
 
-/* Create directory (recursive). Returns 0 on success. */
+/* Create directory (recursive). Returns OZAYN_OK on success. */
 ozayn_result_t ozayn_fs_mkdir(const char *path);
 
-/* Remove file. Returns 0 on success. */
+/* Remove empty directory. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_fs_rmdir(const char *path);
+
+/* Remove file. Returns OZAYN_OK on success. */
 ozayn_result_t ozayn_fs_remove(const char *path);
 
 /* Get file size in bytes. Returns -1 on error. */
@@ -120,8 +126,17 @@ int64_t ozayn_fs_size(const char *path);
 /* Read file contents into buffer. Returns bytes read or -1. */
 int64_t ozayn_fs_read(const char *path, void *buf, uint64_t buf_size);
 
-/* Write buffer to file. Returns bytes written or -1. */
+/* Write buffer to file (creates or overwrites). Returns bytes written or -1. */
 int64_t ozayn_fs_write(const char *path, const void *data, uint64_t size);
+
+/* Append data to file (creates if not exists). Returns bytes appended or -1. */
+int64_t ozayn_fs_append(const char *path, const void *data, uint64_t size);
+
+/* Copy file from source to destination. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_fs_copy(const char *source, const char *dest);
+
+/* Move/rename file. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_fs_move(const char *source, const char *dest);
 
 /* Get home directory. Returns pointer to internal buffer. */
 const char *ozayn_fs_home(void);

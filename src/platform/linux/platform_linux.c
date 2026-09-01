@@ -129,6 +129,13 @@ int ozayn_fs_exists(const char *path) {
     return stat(path, &st) == 0;
 }
 
+int ozayn_fs_is_file(const char *path) {
+    if (!path) return 0;
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+    return S_ISREG(st.st_mode);
+}
+
 int ozayn_fs_is_dir(const char *path) {
     if (!path) return 0;
     struct stat st;
@@ -155,6 +162,12 @@ static int mkdirs_recursive(const char *path, mode_t mode) {
 ozayn_result_t ozayn_fs_mkdir(const char *path) {
     if (!path) return OZAYN_ERR_NULL;
     if (mkdirs_recursive(path, 0755) == 0) return OZAYN_OK;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_fs_rmdir(const char *path) {
+    if (!path) return OZAYN_ERR_NULL;
+    if (rmdir(path) == 0) return OZAYN_OK;
     return OZAYN_ERR;
 }
 
@@ -187,6 +200,43 @@ int64_t ozayn_fs_write(const char *path, const void *data, uint64_t size) {
     size_t n = fwrite(data, 1, (size_t)size, f);
     fclose(f);
     return (int64_t)n;
+}
+
+int64_t ozayn_fs_append(const char *path, const void *data, uint64_t size) {
+    if (!path || !data) return -1;
+    FILE *f = fopen(path, "ab");
+    if (!f) return -1;
+    size_t n = fwrite(data, 1, (size_t)size, f);
+    fclose(f);
+    return (int64_t)n;
+}
+
+ozayn_result_t ozayn_fs_copy(const char *source, const char *dest) {
+    if (!source || !dest) return OZAYN_ERR_NULL;
+    if (!ozayn_fs_is_file(source)) return OZAYN_ERR;
+
+    FILE *fin = fopen(source, "rb");
+    if (!fin) return OZAYN_ERR;
+
+    FILE *fout = fopen(dest, "wb");
+    if (!fout) { fclose(fin); return OZAYN_ERR; }
+
+    char buf[8192];
+    size_t n;
+    int success = 1;
+    while ((n = fread(buf, 1, sizeof(buf), fin)) > 0) {
+        if (fwrite(buf, 1, n, fout) != n) { success = 0; break; }
+    }
+
+    fclose(fin);
+    fclose(fout);
+    return success ? OZAYN_OK : OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_fs_move(const char *source, const char *dest) {
+    if (!source || !dest) return OZAYN_ERR_NULL;
+    if (rename(source, dest) == 0) return OZAYN_OK;
+    return OZAYN_ERR;
 }
 
 static char home_buf[OZAYN_MAX_PATH];
