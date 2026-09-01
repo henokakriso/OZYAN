@@ -23,6 +23,32 @@ extern int run_cl_tests(void);
 extern int run_cv_tests(void);
 extern int run_version_tests(void);
 extern int run_release_tests(void);
+extern int run_logger_tests(void);
+extern int run_tasks_tests(void);
+extern int run_commands_tests(void);
+extern int run_recovery_tests(void);
+extern int run_resource_tests(void);
+extern int run_scheduler_tests(void);
+extern int run_monitoring_tests(void);
+extern int run_diagnostics_tests(void);
+extern int run_security_boundary_tests(void);
+extern int run_state_manager_tests(void);
+extern int run_service_lifecycle_tests(void);
+extern int run_platform_tests(void);
+extern int run_ipc_tests(void);
+extern int run_registry_tests(void);
+extern int run_modules_tests(void);
+extern int run_plugins_tests(void);
+extern int run_processes_tests(void);
+extern int run_perf_mgr_tests(void);
+extern int run_core_api_tests(void);
+extern int run_config_mgr_tests(void);
+
+/* Failure mode test declarations */
+extern int run_failure_tests(void);
+
+/* Regression test declarations */
+extern int run_regression_tests(void);
 
 /* Integration test declarations */
 extern int run_startup_shutdown_tests(void);
@@ -44,20 +70,48 @@ int main(void) {
 
     /* Unit tests */
     printf("\n  --- UNIT TESTS ---");
-    suite_fail = run_events_tests();    suite_pass = 11 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_dependency_tests(); suite_pass = 11 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_lifecycle_tests();  suite_pass = 9 - suite_fail;  total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_security_tests();   suite_pass = 16 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_reload_tests();     suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_perf_tests();       suite_pass = 15 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_defense_tests();    suite_pass = 13 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_cb_tests();         suite_pass = 8  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_rl_tests();         suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_ht_tests();         suite_pass = 8  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_cl_tests();         suite_pass = 9  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_cv_tests();         suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_version_tests();    suite_pass = 16 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_release_tests();    suite_pass = 13 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_events_tests();       suite_pass = 11 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_dependency_tests();   suite_pass = 11 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_lifecycle_tests();    suite_pass = 9  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_security_tests();     suite_pass = 16 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_reload_tests();       suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_perf_tests();         suite_pass = 15 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_defense_tests();      suite_pass = 13 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_cb_tests();           suite_pass = 8  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_rl_tests();           suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_ht_tests();           suite_pass = 8  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_cl_tests();           suite_pass = 9  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_cv_tests();           suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_version_tests();      suite_pass = 16 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_release_tests();      suite_pass = 13 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_logger_tests();       suite_pass = 7  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_tasks_tests();        suite_pass = 11 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_commands_tests();     suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_recovery_tests();     suite_pass = 9  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_resource_tests();     suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_scheduler_tests();    suite_pass = 7  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_monitoring_tests();   suite_pass = 11 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_diagnostics_tests();  suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_security_boundary_tests(); suite_pass = 8 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_state_manager_tests(); suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_service_lifecycle_tests(); suite_pass = 7 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_platform_tests();     suite_pass = 8  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_ipc_tests();          suite_pass = 7  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_registry_tests();     suite_pass = 8  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_modules_tests();      suite_pass = 6  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_plugins_tests();      suite_pass = 6  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_processes_tests();    suite_pass = 7  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_perf_mgr_tests();     suite_pass = 11 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_core_api_tests();     suite_pass = 12 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_config_mgr_tests();   suite_pass = 6  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+
+    /* Failure mode tests */
+    printf("\n  --- FAILURE MODE TESTS ---");
+    suite_fail = run_failure_tests();      suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+
+    /* Regression tests */
+    printf("\n  --- REGRESSION TESTS ---");
+    suite_fail = run_regression_tests();   suite_pass = 11 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Integration tests */
     printf("\n  --- INTEGRATION TESTS ---");
