@@ -243,6 +243,17 @@ const char *ozayn_event_type_name(ozayn_event_type_t type) {
         case OZAYN_REL_EVENT_NOT_READY:             return "REL_NOT_READY";
         case OZAYN_REL_EVENT_MIGRATED:              return "REL_MIGRATED";
         case OZAYN_REL_EVENT_LOGGED:                return "REL_LOGGED";
+        /* Application-domain events */
+        case OZAYN_APP_EVENT_FACE_DETECTED:         return "APP_FACE_DETECTED";
+        case OZAYN_APP_EVENT_VOICE_DETECTED:        return "APP_VOICE_DETECTED";
+        case OZAYN_APP_EVENT_GESTURE_DETECTED:      return "APP_GESTURE_DETECTED";
+        case OZAYN_APP_EVENT_WINDOW_OPENED:         return "APP_WINDOW_OPENED";
+        case OZAYN_APP_EVENT_WINDOW_CLOSED:         return "APP_WINDOW_CLOSED";
+        case OZAYN_APP_EVENT_COMMAND_RECEIVED:      return "APP_COMMAND_RECEIVED";
+        case OZAYN_APP_EVENT_COMMAND_COMPLETED:     return "APP_COMMAND_COMPLETED";
+        case OZAYN_APP_EVENT_ARWE_CONNECTED:        return "APP_ARWE_CONNECTED";
+        case OZAYN_APP_EVENT_ARWE_DISCONNECTED:     return "APP_ARWE_DISCONNECTED";
+        case OZAYN_APP_EVENT_MODULE_ACTION:         return "APP_MODULE_ACTION";
     }
     return "UNKNOWN";
 }
