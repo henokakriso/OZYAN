@@ -22,6 +22,8 @@
 #include <dirent.h>
 #include <signal.h>
 #include <errno.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 #include <mach/mach.h>
 #include <net/if.h>
 #include <ifaddrs.h>
@@ -140,6 +142,148 @@ ozayn_result_t ozayn_process_signal(uint32_t pid, int signal) {
     if (pid == 0) return OZAYN_ERR;
     if (kill((pid_t)pid, signal) == 0) return OZAYN_OK;
     return OZAYN_ERR;
+}
+
+/* ================================================================
+ * B2. Cross-Platform Process Management
+ * ================================================================ */
+
+ozayn_result_t ozayn_process_start(const char *program, const char *const argv[], OzaynProcess *proc) {
+    if (!program || !proc) return OZAYN_ERR_NULL;
+    if (strlen(program) == 0) return OZAYN_ERR;
+
+    memset(proc, 0, sizeof(OzaynProcess));
+    proc->running = 0;
+
+    int err_pipe[2];
+    if (pipe(err_pipe) < 0) return OZAYN_ERR;
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(err_pipe[0]);
+        close(err_pipe[1]);
+        return OZAYN_ERR;
+    } else if (pid == 0) {
+        close(err_pipe[0]);
+        fcntl(err_pipe[1], F_SETFD, FD_CLOEXEC);
+
+        const char *args[OZAYN_PROCESS_MAX_ARGS + 1];
+        args[0] = program;
+        int argc = 1;
+
+        if (argv) {
+            for (int i = 0; i < OZAYN_PROCESS_MAX_ARGS && argv[i]; i++) {
+                args[argc++] = argv[i];
+            }
+        }
+        args[argc] = NULL;
+
+        execvp(program, (char *const *)args);
+
+        unsigned char err_byte = 1;
+        write(err_pipe[1], &err_byte, 1);
+        close(err_pipe[1]);
+        _exit(127);
+    } else {
+        close(err_pipe[1]);
+
+        unsigned char err_byte = 0;
+        int n = read(err_pipe[0], &err_byte, 1);
+        close(err_pipe[0]);
+
+        if (n > 0 && err_byte == 1) {
+            int status;
+            waitpid(pid, &status, 0);
+            return OZAYN_ERR;
+        }
+
+        proc->pid = (uint32_t)pid;
+        proc->running = 1;
+        return OZAYN_OK;
+    }
+    return OZAYN_ERR;
+}
+
+int ozayn_process_is_running(OzaynProcess *proc) {
+    if (!proc || proc->pid == 0) return 0;
+    if (!proc->running) return 0;
+
+    int status;
+    pid_t result = waitpid((pid_t)proc->pid, &status, WNOHANG);
+    if (result == 0) {
+        return 1;
+    } else if (result > 0) {
+        proc->running = 0;
+        return 0;
+    }
+    return 0;
+}
+
+ozayn_result_t ozayn_proc_get_info(OzaynProcess *proc, OzaynProcessInfo *info) {
+    if (!proc || !info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynProcessInfo));
+
+    info->pid = proc->pid;
+
+    if (proc->pid == 0) {
+        info->state = OZAYN_PROC_STATE_UNKNOWN;
+        return OZAYN_OK;
+    }
+
+    int alive = kill((pid_t)proc->pid, 0) == 0;
+    if (alive) {
+        info->state = OZAYN_PROC_STATE_RUNNING;
+        strncpy(info->name, "running", OZAYN_MAX_PROCESS_NAME - 1);
+    } else {
+        info->state = OZAYN_PROC_STATE_EXITED;
+        strncpy(info->name, "exited", OZAYN_MAX_PROCESS_NAME - 1);
+    }
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_process_terminate(OzaynProcess *proc) {
+    if (!proc) return OZAYN_ERR_NULL;
+    if (proc->pid == 0 || !proc->running) return OZAYN_ERR;
+
+    if (kill((pid_t)proc->pid, SIGTERM) == 0) {
+        return OZAYN_OK;
+    }
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_process_wait(OzaynProcess *proc, uint32_t timeout_ms) {
+    if (!proc) return OZAYN_ERR_NULL;
+    if (proc->pid == 0) return OZAYN_ERR;
+    if (!proc->running) return OZAYN_OK;
+
+    if (timeout_ms == 0) {
+        int status;
+        waitpid((pid_t)proc->pid, &status, 0);
+        proc->running = 0;
+        return OZAYN_OK;
+    }
+
+    uint32_t elapsed = 0;
+    while (elapsed < timeout_ms) {
+        int status;
+        pid_t result = waitpid((pid_t)proc->pid, &status, WNOHANG);
+        if (result > 0) {
+            proc->running = 0;
+            return OZAYN_OK;
+        }
+        ozayn_system_sleep_ms(10);
+        elapsed += 10;
+    }
+    return OZAYN_ERR;
+}
+
+void ozayn_process_close(OzaynProcess *proc) {
+    if (!proc) return;
+    if (proc->running && proc->pid > 0) {
+        ozayn_process_terminate(proc);
+    }
+    memset(proc, 0, sizeof(OzaynProcess));
 }
 
 /* ================================================================

@@ -84,6 +84,55 @@ const char *ozayn_fs_config_dir(void);  /* platform config directory */
 - Linux/macOS: POSIX (`stat`, `mkdir`, `fopen`, `rename`, `rmdir`)
 - Windows: Win32 (`GetFileAttributes`, `CreateFile`, `CopyFile`, `MoveFile`, `RemoveDirectory`)
 
+## Step 04 — Process Management Abstraction
+
+Cross-platform process lifecycle: start, query, terminate, wait, and close.
+
+### Public API
+
+```c
+typedef enum {
+    OZAYN_PROC_STATE_UNKNOWN = 0,
+    OZAYN_PROC_STATE_RUNNING,
+    OZAYN_PROC_STATE_STOPPED,
+    OZAYN_PROC_STATE_EXITED,
+    OZAYN_PROC_STATE_FAILED
+} OzaynProcessState;
+
+typedef struct {
+    uint32_t           pid;
+    OzaynProcessState  state;
+    int                exit_code;
+    char               name[OZAYN_MAX_PROCESS_NAME];
+} OzaynProcessInfo;
+
+typedef struct {
+    uint32_t pid;
+    int      running;
+    int      _internal[16];
+} OzaynProcess;
+
+ozayn_result_t ozayn_process_start(const char *program, const char *const argv[], OzaynProcess *proc);
+int            ozayn_process_is_running(OzaynProcess *proc);
+ozayn_result_t ozayn_proc_get_info(OzaynProcess *proc, OzaynProcessInfo *info);
+ozayn_result_t ozayn_process_terminate(OzaynProcess *proc);
+ozayn_result_t ozayn_process_wait(OzaynProcess *proc, uint32_t timeout_ms);
+void           ozayn_process_close(OzaynProcess *proc);
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_process_close()` is idempotent and safe to call multiple times
+- `ozayn_process_wait()` supports both blocking (timeout=0) and timed waits
+- Exec failure detection via pipe + FD_CLOEXEC (POSIX) or CreateProcess error code (Windows)
+- No `system()` calls — uses `fork/execvp` (POSIX) or `CreateProcess` (Windows)
+
+### Platform Implementations
+
+- Linux/macOS: POSIX (`fork`, `execvp`, `waitpid`, `kill`, pipes)
+- Windows: Win32 (`CreateProcess`, `WaitForSingleObject`, `TerminateProcess`)
+
 ## Directory Structure
 
 ```
@@ -122,9 +171,19 @@ make test
 - File copy and move
 - NULL/empty/invalid path handling
 
+### Step 04 Tests (26 tests)
+- Process start, PID, running flag
+- Process is_running (running and terminated)
+- Process info (running and exited states)
+- Process terminate and wait (exits + timeout)
+- Process close (cleanup + idempotent)
+- Error handling: NULL, empty, invalid exec, zero pid
+- Multiple concurrent processes
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
 - [x] Step 02: System Information & Hardware Identification
 - [x] Step 03: Filesystem Abstraction
-- [ ] Steps 04-35: (future)
+- [x] Step 04: Process Management Abstraction
+- [ ] Steps 05-35: (future)

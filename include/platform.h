@@ -98,6 +98,49 @@ ozayn_result_t ozayn_process_info(uint32_t pid, ozayn_process_info_t *info);
 /* Send signal to process. 0 = success. */
 ozayn_result_t ozayn_process_signal(uint32_t pid, int signal);
 
+/* ---- Cross-platform process management ---- */
+
+#define OZAYN_PROCESS_MAX_ARGS 32
+
+typedef enum {
+    OZAYN_PROC_STATE_UNKNOWN = 0,
+    OZAYN_PROC_STATE_RUNNING,
+    OZAYN_PROC_STATE_STOPPED,
+    OZAYN_PROC_STATE_EXITED,
+    OZAYN_PROC_STATE_FAILED
+} OzaynProcessState;
+
+typedef struct {
+    uint32_t           pid;        /* OS process ID */
+    OzaynProcessState  state;      /* current state */
+    int                exit_code;  /* exit code (valid when state=EXITED) */
+    char               name[OZAYN_MAX_PROCESS_NAME];
+} OzaynProcessInfo;
+
+typedef struct {
+    uint32_t pid;                  /* OS process ID, 0 if not started */
+    int      running;              /* 1 if currently running */
+    int      _internal[16];        /* platform-specific handle storage */
+} OzaynProcess;
+
+/* Start a new process. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_process_start(const char *program, const char *const argv[], OzaynProcess *proc);
+
+/* Check if process is running. Returns 1 if running, 0 otherwise. */
+int ozayn_process_is_running(OzaynProcess *proc);
+
+/* Get process information. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_proc_get_info(OzaynProcess *proc, OzaynProcessInfo *info);
+
+/* Terminate process. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_process_terminate(OzaynProcess *proc);
+
+/* Wait for process to exit. Blocks until exit or timeout_ms (0=infinite). Returns OZAYN_OK. */
+ozayn_result_t ozayn_process_wait(OzaynProcess *proc, uint32_t timeout_ms);
+
+/* Release process resources. Safe to call multiple times. */
+void ozayn_process_close(OzaynProcess *proc);
+
 /* ================================================================
  * C. File System / Storage
  * ================================================================ */

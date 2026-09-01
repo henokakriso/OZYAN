@@ -141,6 +141,143 @@ ozayn_result_t ozayn_process_signal(uint32_t pid, int signal) {
 }
 
 /* ================================================================
+ * B2. Cross-Platform Process Management
+ * ================================================================ */
+
+ozayn_result_t ozayn_process_start(const char *program, const char *const argv[], OzaynProcess *proc) {
+    if (!program || !proc) return OZAYN_ERR_NULL;
+    if (strlen(program) == 0) return OZAYN_ERR;
+
+    memset(proc, 0, sizeof(OzaynProcess));
+    proc->running = 0;
+
+    /* Build command line */
+    char cmd_line[2048];
+    snprintf(cmd_line, sizeof(cmd_line), "\"%s\"", program);
+    if (argv) {
+        for (int i = 0; argv[i] && i < OZAYN_PROCESS_MAX_ARGS; i++) {
+            size_t len = strlen(cmd_line);
+            snprintf(cmd_line + len, sizeof(cmd_line) - len, " \"%s\"", argv[i]);
+        }
+    }
+
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    ZeroMemory(&pi, sizeof(pi));
+
+    if (!CreateProcessA(NULL, cmd_line, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        return OZAYN_ERR;
+    }
+
+    proc->pid = (uint32_t)pi.dwProcessId;
+    proc->running = 1;
+    /* Store handles in _internal: [0]=process, [1]=thread */
+    HANDLE *handles = (HANDLE *)proc->_internal;
+    handles[0] = pi.hProcess;
+    handles[1] = pi.hThread;
+
+    return OZAYN_OK;
+}
+
+int ozayn_process_is_running(OzaynProcess *proc) {
+    if (!proc || proc->pid == 0) return 0;
+    if (!proc->running) return 0;
+
+    HANDLE *handles = (HANDLE *)proc->_internal;
+    if (!handles[0]) return 0;
+
+    DWORD exit_code;
+    if (GetExitCodeProcess(handles[0], &exit_code)) {
+        if (exit_code == STILL_ACTIVE) {
+            return 1;
+        }
+    }
+    proc->running = 0;
+    return 0;
+}
+
+ozayn_result_t ozayn_proc_get_info(OzaynProcess *proc, OzaynProcessInfo *info) {
+    if (!proc || !info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynProcessInfo));
+
+    info->pid = proc->pid;
+
+    if (proc->pid == 0) {
+        info->state = OZAYN_PROC_STATE_UNKNOWN;
+        return OZAYN_OK;
+    }
+
+    if (proc->running) {
+        HANDLE *handles = (HANDLE *)proc->_internal;
+        DWORD exit_code;
+        if (handles[0] && GetExitCodeProcess(handles[0], &exit_code)) {
+            if (exit_code == STILL_ACTIVE) {
+                info->state = OZAYN_PROC_STATE_RUNNING;
+            } else {
+                info->state = OZAYN_PROC_STATE_EXITED;
+                info->exit_code = (int)exit_code;
+            }
+        } else {
+            info->state = OZAYN_PROC_STATE_UNKNOWN;
+        }
+    } else {
+        info->state = OZAYN_PROC_STATE_EXITED;
+    }
+
+    strncpy(info->name, "process", OZAYN_MAX_PROCESS_NAME - 1);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_process_terminate(OzaynProcess *proc) {
+    if (!proc) return OZAYN_ERR_NULL;
+    if (proc->pid == 0 || !proc->running) return OZAYN_ERR;
+
+    HANDLE *handles = (HANDLE *)proc->_internal;
+    if (!handles[0]) return OZAYN_ERR;
+
+    if (TerminateProcess(handles[0], 1)) {
+        return OZAYN_OK;
+    }
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_process_wait(OzaynProcess *proc, uint32_t timeout_ms) {
+    if (!proc) return OZAYN_ERR_NULL;
+    if (proc->pid == 0) return OZAYN_ERR;
+    if (!proc->running) return OZAYN_OK;
+
+    HANDLE *handles = (HANDLE *)proc->_internal;
+    if (!handles[0]) return OZAYN_ERR;
+
+    DWORD t = (timeout_ms == 0) ? INFINITE : (DWORD)timeout_ms;
+    DWORD result = WaitForSingleObject(handles[0], t);
+    if (result == WAIT_OBJECT_0 || result == WAIT_TIMEOUT) {
+        proc->running = 0;
+        return OZAYN_OK;
+    }
+    return OZAYN_ERR;
+}
+
+void ozayn_process_close(OzaynProcess *proc) {
+    if (!proc) return;
+    HANDLE *handles = (HANDLE *)proc->_internal;
+    if (handles[0]) {
+        if (proc->running) {
+            ozayn_process_terminate(proc);
+        }
+        CloseHandle(handles[0]);
+        handles[0] = NULL;
+    }
+    if (handles[1]) {
+        CloseHandle(handles[1]);
+        handles[1] = NULL;
+    }
+    memset(proc, 0, sizeof(OzaynProcess));
+}
+
+/* ================================================================
  * C. File System / Storage
  * ================================================================ */
 
