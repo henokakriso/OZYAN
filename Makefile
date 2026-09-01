@@ -47,7 +47,7 @@ TOOLS_BIN   = $(patsubst $(TOOLS_DIR)/%.c, $(BUILD)/%, $(TOOLS_SRCS))
 
 # Test sources
 TEST_MAIN   = tests/test_main.c
-TEST_SRCS   = $(wildcard tests/unit/*.c) $(wildcard tests/integration/*.c) $(wildcard tests/system/*.c) $(wildcard tests/failure/*.c) $(wildcard tests/regression/*.c)
+TEST_SRCS   = $(wildcard tests/unit/*.c) $(wildcard tests/integration/*.c) $(wildcard tests/system/*.c) $(wildcard tests/failure/*.c) $(wildcard tests/regression/*.c) $(wildcard 02_PLATFORM/tests/*.c)
 TEST_ALL_SRCS = $(TEST_MAIN) $(TEST_SRCS)
 TEST_BIN    = $(BUILD)/ozayn_test
 TEST_OBJS   = $(filter-out build/main.o, $(OBJS))

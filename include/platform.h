@@ -15,6 +15,7 @@
  * abstraction layer rather than directly with OS-specific APIs.
  *
  * Sections:
+ *   0. Platform Detection & Initialization
  *   A. System Information
  *   B. Process Operations
  *   C. File System / Storage
@@ -24,6 +25,29 @@
  *   G. Audio (stubs for Section 06)
  *   H. Input (stubs for Section 07)
  */
+
+/* ================================================================
+ * 0. Platform Detection & Initialization
+ * ================================================================ */
+
+typedef enum {
+    OZAYN_PLATFORM_UNKNOWN = 0,
+    OZAYN_PLATFORM_LINUX,
+    OZAYN_PLATFORM_WINDOWS,
+    OZAYN_PLATFORM_MACOS
+} OzaynPlatform;
+
+/* Initialize platform detection. Returns OZAYN_OK on supported OS, OZAYN_ERR on unknown. */
+ozayn_result_t ozayn_platform_detect_init(void);
+
+/* Shutdown platform layer. Returns to UNKNOWN state. */
+void ozayn_platform_detect_shutdown(void);
+
+/* Get detected platform. Returns OZAYN_PLATFORM_UNKNOWN if not initialized. */
+OzaynPlatform ozayn_platform_get(void);
+
+/* Get platform name string. Never returns NULL. */
+const char *ozayn_platform_name(void);
 
 /* ================================================================
  * A. System Information

@@ -334,14 +334,56 @@ ozayn_result_t ozayn_input_info(ozayn_input_info_t *info) {
 }
 
 /* ================================================================
+ * Platform Detection & Initialization
+ * ================================================================ */
+
+static OzaynPlatform _ozayn_current_platform = OZAYN_PLATFORM_UNKNOWN;
+
+ozayn_result_t ozayn_platform_detect_init(void) {
+#if defined(OZAYN_OS_LINUX)
+    _ozayn_current_platform = OZAYN_PLATFORM_LINUX;
+#elif defined(OZAYN_OS_WINDOWS)
+    _ozayn_current_platform = OZAYN_PLATFORM_WINDOWS;
+#elif defined(OZAYN_OS_MACOS)
+    _ozayn_current_platform = OZAYN_PLATFORM_MACOS;
+#else
+    _ozayn_current_platform = OZAYN_PLATFORM_UNKNOWN;
+    return OZAYN_ERR;
+#endif
+    LOG_INFO("PLATFORM", "Platform detected: %s", ozayn_platform_name());
+    return OZAYN_OK;
+}
+
+void ozayn_platform_detect_shutdown(void) {
+    _ozayn_current_platform = OZAYN_PLATFORM_UNKNOWN;
+}
+
+OzaynPlatform ozayn_platform_get(void) {
+    return _ozayn_current_platform;
+}
+
+const char *ozayn_platform_name(void) {
+    switch (_ozayn_current_platform) {
+        case OZAYN_PLATFORM_LINUX:   return "Linux";
+        case OZAYN_PLATFORM_WINDOWS: return "Windows";
+        case OZAYN_PLATFORM_MACOS:   return "macOS";
+        default:                     return "Unknown";
+    }
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 
 ozayn_result_t ozayn_platform_init(void) {
-    LOG_INFO("PLATFORM", "Platform layer initialized (%s/%s)", OZAYN_OS_NAME, OZAYN_ARCH_NAME);
-    return OZAYN_OK;
+    ozayn_result_t r = ozayn_platform_detect_init();
+    if (r == OZAYN_OK) {
+        LOG_INFO("PLATFORM", "Platform layer initialized (%s/%s)", OZAYN_OS_NAME, OZAYN_ARCH_NAME);
+    }
+    return r;
 }
 
 void ozayn_platform_shutdown(void) {
     LOG_INFO("PLATFORM", "Platform layer shut down");
+    ozayn_platform_detect_shutdown();
 }
