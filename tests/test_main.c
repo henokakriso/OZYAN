@@ -46,6 +46,7 @@ extern int run_config_mgr_tests(void);
 
 /* Section 02 — Platform Detection tests */
 extern int run_platform_detect_tests(void);
+extern int run_platform_info_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -108,6 +109,7 @@ int main(void) {
     suite_fail = run_core_api_tests();     suite_pass = 12 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_config_mgr_tests();   suite_pass = 6  - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_platform_detect_tests(); suite_pass = 8 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_platform_info_tests(); suite_pass = 10 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

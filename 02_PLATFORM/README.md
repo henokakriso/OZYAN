@@ -54,15 +54,24 @@ Platform implementations live in `src/platform/{linux,macos,windows}/` and are c
 make test
 ```
 
-8 platform detection tests verify:
+### Step 01 Tests (8 tests)
 - Init succeeds on supported OS
 - Platform is detected correctly
 - Name matches platform
 - State resets to UNKNOWN on shutdown
 - Init/shutdown cycles are safe
 
+### Step 02 Tests (10 tests)
+- System information API succeeds
+- OS, architecture, hostname, username are non-empty
+- CPU count > 0
+- Memory total > 0
+- Memory available <= total
+- NULL pointer handled safely
+- OS matches detected platform
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
-- [ ] Step 02: System Information
+- [x] Step 02: System Information & Hardware Identification
 - [ ] Steps 03-35: (future)

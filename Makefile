@@ -7,22 +7,22 @@ TARGET  = ozayn
 # Platform detection
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-    PLATFORM_SRC = src/platform/linux/platform_linux.c
+    PLATFORM_SRC = src/platform/linux/platform_linux.c src/platform/linux/platform_info_linux.c
     PLATFORM_NAME = linux
 endif
 ifeq ($(UNAME_S),Darwin)
-    PLATFORM_SRC = src/platform/macos/platform_macos.c
+    PLATFORM_SRC = src/platform/macos/platform_macos.c src/platform/macos/platform_info_macos.c
     PLATFORM_NAME = macos
     LDFLAGS += -framework CoreFoundation
 endif
 ifeq ($(findstring MINGW,$(UNAME_S)),MINGW)
-    PLATFORM_SRC = src/platform/windows/platform_windows.c
+    PLATFORM_SRC = src/platform/windows/platform_windows.c src/platform/windows/platform_info_windows.c
     PLATFORM_NAME = windows
     LDFLAGS += -lws2_32 -liphlpapi
     TARGET = ozayn.exe
 endif
 ifeq ($(findstring MSYS,$(UNAME_S)),MSYS)
-    PLATFORM_SRC = src/platform/windows/platform_windows.c
+    PLATFORM_SRC = src/platform/windows/platform_windows.c src/platform/windows/platform_info_windows.c
     PLATFORM_NAME = windows
     LDFLAGS += -lws2_32 -liphlpapi
     TARGET = ozayn.exe
@@ -30,7 +30,7 @@ endif
 
 # Default to Linux if nothing matched
 ifndef PLATFORM_SRC
-    PLATFORM_SRC = src/platform/linux/platform_linux.c
+    PLATFORM_SRC = src/platform/linux/platform_linux.c src/platform/linux/platform_info_linux.c
     PLATFORM_NAME = linux
 endif
 
