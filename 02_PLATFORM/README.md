@@ -180,6 +180,70 @@ ozayn_result_t ozayn_display_refresh(void);
 - Display count returns 0 in headless environments
 - No crashes or errors in headless mode
 
+## Step 06 — Window Management
+
+Cross-platform window discovery, information retrieval, and manipulation.
+
+### Public API
+
+```c
+typedef struct {
+    unsigned long long id;
+    char     title[OZAYN_MAX_WINDOW_TITLE];
+    int32_t  x;
+    int32_t  y;
+    uint32_t width;
+    uint32_t height;
+    int      visible;
+    int      minimized;
+    int      maximized;
+    int      active;
+} OzaynWindowInfo;
+
+ozayn_result_t ozayn_window_init(void);
+void           ozayn_window_shutdown(void);
+int            ozayn_window_is_available(void);
+uint32_t       ozayn_window_get_count(void);
+ozayn_result_t ozayn_window_get_info(uint32_t index, OzaynWindowInfo *info);
+ozayn_result_t ozayn_window_get_active(OzaynWindowInfo *info);
+ozayn_result_t ozayn_window_move(unsigned long long window_id, int32_t x, int32_t y);
+ozayn_result_t ozayn_window_resize(unsigned long long window_id, uint32_t width, uint32_t height);
+ozayn_result_t ozayn_window_minimize(unsigned long long window_id);
+ozayn_result_t ozayn_window_maximize(unsigned long long window_id);
+ozayn_result_t ozayn_window_restore(unsigned long long window_id);
+ozayn_result_t ozayn_window_close(unsigned long long window_id);
+ozayn_result_t ozayn_window_refresh(void);
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_window_shutdown()` is idempotent and safe to call multiple times
+- Invalid window IDs are rejected without calling OS APIs
+- Zero width/height rejected for resize
+- Works in headless environments (returns available=0, count=0)
+- No hidden surveillance, no keylogging, no stealth monitoring
+
+### Platform Implementations
+
+- Linux: xdotool + xprop for discovery and manipulation, wmctrl fallback for maximize/restore
+- macOS: Stub (requires Objective-C runtime — future implementation)
+- Windows: Stub (requires Win32 EnumWindows — future implementation)
+
+### Linux Limitations
+
+- Requires `xdotool` to be installed
+- Requires X11 display (or `DISPLAY`/`WAYLAND_DISPLAY` environment variable)
+- Maximize uses `super+Up` key combination via xdotool
+- Restore uses wmctrl to remove maximized state
+- Headless environments report unavailable
+
+### Headless Behavior
+
+- Window subsystem gracefully reports unavailable when no display server is present
+- Window count returns 0 in headless environments
+- No crashes or errors in headless mode
+
 ## Directory Structure
 
 ```
@@ -238,6 +302,18 @@ make test
 - Multiple displays query
 - Legacy display API compatibility
 
+### Step 06 Tests (26 tests)
+- Window init/shutdown (basic + idempotent)
+- Window availability (before/after init)
+- Window count (before/after init)
+- Window get info (by index, null, invalid index, before init)
+- Active window (returns result, null, before init)
+- Window manipulation safety (move/resize/minimize/maximize/restore/close with invalid IDs)
+- Window resize zero dimensions
+- Window refresh (basic + before init)
+- Window shutdown (basic + idempotent + before init)
+- Window enumeration (query all windows)
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -245,4 +321,5 @@ make test
 - [x] Step 03: Filesystem Abstraction
 - [x] Step 04: Process Management Abstraction
 - [x] Step 05: Display Abstraction
-- [ ] Steps 06-35: (future)
+- [x] Step 06: Window Management
+- [ ] Steps 07-35: (future)

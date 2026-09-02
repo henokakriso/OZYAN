@@ -615,7 +615,78 @@ int ozayn_network_ping(const char *host) {
 }
 
 /* ================================================================
- * F. Camera (stub)
+ * E. Window Management (stub — needs Win32 enum)
+ * ================================================================ */
+
+static OzaynWindowState _ozayn_window = {0};
+
+ozayn_result_t ozayn_window_init(void) {
+    if (_ozayn_window.initialized) return OZAYN_OK;
+    memset(&_ozayn_window, 0, sizeof(OzaynWindowState));
+    _ozayn_window.initialized = 1;
+    _ozayn_window.available = 0;
+    return OZAYN_OK;
+}
+
+void ozayn_window_shutdown(void) {
+    if (!_ozayn_window.initialized) return;
+    memset(&_ozayn_window, 0, sizeof(OzaynWindowState));
+}
+
+int ozayn_window_is_available(void) { return _ozayn_window.available; }
+uint32_t ozayn_window_get_count(void) { return _ozayn_window.initialized ? _ozayn_window.count : 0; }
+
+ozayn_result_t ozayn_window_get_info(uint32_t index, OzaynWindowInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_window.count) return OZAYN_ERR;
+    memcpy(info, &_ozayn_window.windows[index], sizeof(OzaynWindowInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_window_get_active(OzaynWindowInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_move(unsigned long long window_id, int32_t x, int32_t y) {
+    (void)window_id; (void)x; (void)y;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_resize(unsigned long long window_id, uint32_t width, uint32_t height) {
+    (void)window_id; (void)width; (void)height;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_minimize(unsigned long long window_id) {
+    (void)window_id;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_maximize(unsigned long long window_id) {
+    (void)window_id;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_restore(unsigned long long window_id) {
+    (void)window_id;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_close(unsigned long long window_id) {
+    (void)window_id;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_refresh(void) {
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    return OZAYN_OK;
+}
+
+/* ================================================================
+ * G. Camera (stub)
  * ================================================================ */
 
 ozayn_result_t ozayn_camera_info(ozayn_camera_info_t *info) {
@@ -626,7 +697,7 @@ ozayn_result_t ozayn_camera_info(ozayn_camera_info_t *info) {
 }
 
 /* ================================================================
- * G. Audio (stub)
+ * H. Audio (stub)
  * ================================================================ */
 
 ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info) {
@@ -637,7 +708,7 @@ ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info) {
 }
 
 /* ================================================================
- * H. Input (stub)
+ * I. Input (stub)
  * ================================================================ */
 
 ozayn_result_t ozayn_input_info(ozayn_input_info_t *info) {

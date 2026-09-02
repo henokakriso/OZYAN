@@ -611,7 +611,280 @@ ozayn_result_t ozayn_display_refresh(void) {
 }
 
 /* ================================================================
- * E. Network
+ * E. Window Management
+ * ================================================================ */
+
+static OzaynWindowState _ozayn_window = {0};
+
+static int _ozayn_window_check_xdotool(void) {
+    int ret = system("which xdotool >/dev/null 2>&1");
+    return ret == 0;
+}
+
+static void _ozayn_window_discover(void) {
+    _ozayn_window.count = 0;
+
+    if (!_ozayn_window_check_xdotool()) {
+        _ozayn_window.available = 0;
+        return;
+    }
+
+    /* Check if X display is available */
+    if (!getenv("DISPLAY") && !getenv("WAYLAND_DISPLAY")) {
+        _ozayn_window.available = 0;
+        return;
+    }
+
+    /* Get active window ID */
+    unsigned long long active_id = 0;
+    {
+        FILE *f = popen("xdotool getactivewindow 2>/dev/null", "r");
+        if (f) {
+            char buf[64];
+            if (fgets(buf, sizeof(buf), f)) {
+                active_id = strtoull(buf, NULL, 10);
+            }
+            pclose(f);
+        }
+    }
+
+    /* Discover all windows */
+    FILE *f = popen("xdotool search --name \"\" 2>/dev/null", "r");
+    if (!f) {
+        _ozayn_window.available = 0;
+        return;
+    }
+
+    char line[64];
+    while (fgets(line, sizeof(line), f) && _ozayn_window.count < OZAYN_MAX_WINDOWS) {
+        /* Trim newline */
+        size_t len = strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) line[--len] = '\0';
+        if (len == 0) continue;
+
+        unsigned long long wid = strtoull(line, NULL, 10);
+        if (wid == 0) continue;
+
+        OzaynWindowInfo *w = &_ozayn_window.windows[_ozayn_window.count];
+        memset(w, 0, sizeof(OzaynWindowInfo));
+        w->id = wid;
+        w->active = (wid == active_id) ? 1 : 0;
+
+        /* Get window title */
+        {
+            char cmd[128];
+            snprintf(cmd, sizeof(cmd), "xdotool getwindowname %llu 2>/dev/null", wid);
+            FILE *ft = popen(cmd, "r");
+            if (ft) {
+                char title_buf[OZAYN_MAX_WINDOW_TITLE];
+                if (fgets(title_buf, sizeof(title_buf), ft)) {
+                    size_t tlen = strlen(title_buf);
+                    while (tlen > 0 && (title_buf[tlen-1] == '\n' || title_buf[tlen-1] == '\r')) title_buf[--tlen] = '\0';
+                    strncpy(w->title, title_buf, OZAYN_MAX_WINDOW_TITLE - 1);
+                }
+                pclose(ft);
+            }
+        }
+
+        /* Get window geometry */
+        {
+            char cmd[128];
+            snprintf(cmd, sizeof(cmd), "xdotool getwindowgeometry --shell %llu 2>/dev/null", wid);
+            FILE *fg = popen(cmd, "r");
+            if (fg) {
+                char gline[128];
+                int gx = 0, gy = 0, gw = 0, gh = 0;
+                while (fgets(gline, sizeof(gline), fg)) {
+                    if (sscanf(gline, "X=%d", &gx) == 1) continue;
+                    if (sscanf(gline, "Y=%d", &gy) == 1) continue;
+                    if (sscanf(gline, "WIDTH=%d", &gw) == 1) continue;
+                    if (sscanf(gline, "HEIGHT=%d", &gh) == 1) continue;
+                }
+                pclose(fg);
+                w->x = gx;
+                w->y = gy;
+                w->width = (uint32_t)gw;
+                w->height = (uint32_t)gh;
+            }
+        }
+
+        /* Get window state (minimized, maximized, visible) */
+        {
+            char cmd[128];
+            snprintf(cmd, sizeof(cmd), "xprop -id %llu _NET_WM_STATE 2>/dev/null", wid);
+            FILE *fs = popen(cmd, "r");
+            if (fs) {
+                char sline[512];
+                w->visible = 1;
+                while (fgets(sline, sizeof(sline), fs)) {
+                    if (strstr(sline, "_NET_WM_STATE_HIDDEN")) {
+                        w->minimized = 1;
+                        w->visible = 0;
+                    }
+                    if (strstr(sline, "_NET_WM_STATE_MAXIMIZED_VERT") ||
+                        strstr(sline, "_NET_WM_STATE_MAXIMIZED_HORZ")) {
+                        w->maximized = 1;
+                    }
+                }
+                pclose(fs);
+            } else {
+                /* Cannot determine state — assume visible */
+                w->visible = 1;
+            }
+        }
+
+        _ozayn_window.count++;
+    }
+
+    pclose(f);
+    _ozayn_window.available = (_ozayn_window.count > 0) ? 1 : 0;
+}
+
+ozayn_result_t ozayn_window_init(void) {
+    if (_ozayn_window.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_window, 0, sizeof(OzaynWindowState));
+    _ozayn_window_discover();
+    _ozayn_window.initialized = 1;
+
+    LOG_INFO("WINDOW", "Window subsystem initialized (count=%u, available=%s)",
+             _ozayn_window.count, _ozayn_window.available ? "yes" : "no");
+
+    return OZAYN_OK;
+}
+
+void ozayn_window_shutdown(void) {
+    if (!_ozayn_window.initialized) return;
+
+    memset(&_ozayn_window, 0, sizeof(OzaynWindowState));
+    LOG_INFO("WINDOW", "Window subsystem shut down");
+}
+
+int ozayn_window_is_available(void) {
+    return _ozayn_window.available;
+}
+
+uint32_t ozayn_window_get_count(void) {
+    if (!_ozayn_window.initialized) return 0;
+    return _ozayn_window.count;
+}
+
+ozayn_result_t ozayn_window_get_info(uint32_t index, OzaynWindowInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_window.count) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_window.windows[index], sizeof(OzaynWindowInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_window_get_active(OzaynWindowInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+
+    for (uint32_t i = 0; i < _ozayn_window.count; i++) {
+        if (_ozayn_window.windows[i].active) {
+            memcpy(info, &_ozayn_window.windows[i], sizeof(OzaynWindowInfo));
+            return OZAYN_OK;
+        }
+    }
+
+    return OZAYN_ERR;
+}
+
+static int _ozayn_window_id_exists(unsigned long long window_id) {
+    if (window_id == 0) return 0;
+    for (uint32_t i = 0; i < _ozayn_window.count; i++) {
+        if (_ozayn_window.windows[i].id == window_id) return 1;
+    }
+    return 0;
+}
+
+ozayn_result_t ozayn_window_move(unsigned long long window_id, int32_t x, int32_t y) {
+    if (window_id == 0) return OZAYN_ERR;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    if (!_ozayn_window_id_exists(window_id)) return OZAYN_ERR;
+
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "xdotool windowmove %llu %d %d 2>/dev/null", window_id, x, y);
+    if (system(cmd) == 0) return OZAYN_OK;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_resize(unsigned long long window_id, uint32_t width, uint32_t height) {
+    if (window_id == 0) return OZAYN_ERR;
+    if (width == 0 || height == 0) return OZAYN_ERR;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    if (!_ozayn_window_id_exists(window_id)) return OZAYN_ERR;
+
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "xdotool windowsize %llu %u %u 2>/dev/null", window_id, width, height);
+    if (system(cmd) == 0) return OZAYN_OK;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_minimize(unsigned long long window_id) {
+    if (window_id == 0) return OZAYN_ERR;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    if (!_ozayn_window_id_exists(window_id)) return OZAYN_ERR;
+
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "xdotool windowminimize %llu 2>/dev/null", window_id);
+    if (system(cmd) == 0) return OZAYN_OK;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_maximize(unsigned long long window_id) {
+    if (window_id == 0) return OZAYN_ERR;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    if (!_ozayn_window_id_exists(window_id)) return OZAYN_ERR;
+
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd),
+        "xdotool windowactivate %llu && "
+        "xdotool key --window %llu super+Up 2>/dev/null",
+        window_id, window_id);
+    if (system(cmd) == 0) return OZAYN_OK;
+
+    snprintf(cmd, sizeof(cmd), "wmctrl -i -r %llu -b add,maximized_vert,maximized_horz 2>/dev/null", window_id);
+    if (system(cmd) == 0) return OZAYN_OK;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_restore(unsigned long long window_id) {
+    if (window_id == 0) return OZAYN_ERR;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    if (!_ozayn_window_id_exists(window_id)) return OZAYN_ERR;
+
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "wmctrl -i -r %llu -b remove,maximized_vert,maximized_horz 2>/dev/null", window_id);
+    system(cmd);
+
+    snprintf(cmd, sizeof(cmd), "xdotool windowactivate %llu 2>/dev/null", window_id);
+    if (system(cmd) == 0) return OZAYN_OK;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_close(unsigned long long window_id) {
+    if (window_id == 0) return OZAYN_ERR;
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+    if (!_ozayn_window_id_exists(window_id)) return OZAYN_ERR;
+
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "xdotool windowclose %llu 2>/dev/null", window_id);
+    if (system(cmd) == 0) return OZAYN_OK;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_window_refresh(void) {
+    if (!_ozayn_window.initialized) return OZAYN_ERR;
+
+    _ozayn_window_discover();
+    return OZAYN_OK;
+}
+
+/* ================================================================
+ * F. Network
  * ================================================================ */
 
 ozayn_result_t ozayn_network_info(ozayn_network_info_t *info) {

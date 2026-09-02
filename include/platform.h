@@ -20,10 +20,11 @@
  *   B. Process Operations
  *   C. File System / Storage
  *   D. Display / Monitor
- *   E. Network
- *   F. Camera (stubs for Section 05)
- *   G. Audio (stubs for Section 06)
- *   H. Input (stubs for Section 07)
+ *   E. Window Management (Step 06)
+ *   F. Network
+ *   G. Camera (stubs for Section 05)
+ *   H. Audio (stubs for Section 06)
+ *   I. Input (stubs for Section 07)
  */
 
 /* ================================================================
@@ -254,7 +255,73 @@ ozayn_result_t ozayn_display_get_primary(OzaynDisplayInfo *info);
 ozayn_result_t ozayn_display_refresh(void);
 
 /* ================================================================
- * E. Network
+ * E. Window Management
+ * ================================================================ */
+
+#define OZAYN_MAX_WINDOW_TITLE 256
+#define OZAYN_MAX_WINDOWS      256
+
+typedef struct {
+    unsigned long long id;
+    char     title[OZAYN_MAX_WINDOW_TITLE];
+    int32_t  x;
+    int32_t  y;
+    uint32_t width;
+    uint32_t height;
+    int      visible;
+    int      minimized;
+    int      maximized;
+    int      active;
+} OzaynWindowInfo;
+
+typedef struct {
+    int              initialized;
+    int              available;
+    uint32_t         count;
+    OzaynWindowInfo  windows[OZAYN_MAX_WINDOWS];
+} OzaynWindowState;
+
+/* Initialize window subsystem. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_init(void);
+
+/* Shutdown window subsystem. Safe to call multiple times. */
+void ozayn_window_shutdown(void);
+
+/* Check if window subsystem is available. Returns 1 if available, 0 otherwise. */
+int ozayn_window_is_available(void);
+
+/* Get number of discovered windows. Returns count or 0 if unavailable. */
+uint32_t ozayn_window_get_count(void);
+
+/* Get window info by index. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_get_info(uint32_t index, OzaynWindowInfo *info);
+
+/* Get active/foreground window. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_get_active(OzaynWindowInfo *info);
+
+/* Move window to position. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_move(unsigned long long window_id, int32_t x, int32_t y);
+
+/* Resize window. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_resize(unsigned long long window_id, uint32_t width, uint32_t height);
+
+/* Minimize window. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_minimize(unsigned long long window_id);
+
+/* Maximize window. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_maximize(unsigned long long window_id);
+
+/* Restore minimized/maximized window. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_restore(unsigned long long window_id);
+
+/* Close window. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_close(unsigned long long window_id);
+
+/* Refresh window list. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_window_refresh(void);
+
+/* ================================================================
+ * F. Network
  * ================================================================ */
 
 #define OZAYN_MAX_IFACE_NAME 64
@@ -279,7 +346,7 @@ ozayn_result_t ozayn_network_info(ozayn_network_info_t *info);
 int ozayn_network_ping(const char *host);
 
 /* ================================================================
- * F. Camera (stubs — implemented in Section 05)
+ * G. Camera (stubs — implemented in Section 05)
  * ================================================================ */
 
 typedef struct {
@@ -293,7 +360,7 @@ typedef struct {
 ozayn_result_t ozayn_camera_info(ozayn_camera_info_t *info);
 
 /* ================================================================
- * G. Audio (stubs — implemented in Section 06)
+ * H. Audio (stubs — implemented in Section 06)
  * ================================================================ */
 
 typedef struct {
@@ -306,7 +373,7 @@ typedef struct {
 ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info);
 
 /* ================================================================
- * H. Input (stubs — implemented in Section 07)
+ * I. Input (stubs — implemented in Section 07)
  * ================================================================ */
 
 typedef struct {
