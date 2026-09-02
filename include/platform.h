@@ -22,7 +22,7 @@
  *   D. Display / Monitor
  *   E. Window Management (Step 06)
  *   F. Network
- *   G. Camera (stubs for Section 05)
+ *   G. Camera Device Abstraction (Step 09)
  *   H. Audio (stubs for Section 06)
  *   I. Input (Step 07)
  *   J. Keyboard & Input Event Abstraction (Step 08)
@@ -347,18 +347,112 @@ ozayn_result_t ozayn_network_info(ozayn_network_info_t *info);
 int ozayn_network_ping(const char *host);
 
 /* ================================================================
- * G. Camera (stubs — implemented in Section 05)
- * ================================================================ */
+ * G. Camera Device Abstraction (Step 09)
+ * ================================================================
+ *
+ * Cross-platform camera enumeration, configuration, and frame capture.
+ * This is the hardware/device abstraction layer only — no computer
+ * vision, face recognition, or AI processing.
+ */
+
+#define OZAYN_MAX_CAMERAS 16
+#define OZAYN_MAX_CAMERA_NAME 256
+#define OZAYN_MAX_CAMERA_ID 256
+
+/* ---- Pixel Formats ---- */
+
+typedef enum {
+    OZAYN_PIXEL_FORMAT_UNKNOWN = 0,
+    OZAYN_PIXEL_FORMAT_RGB24,
+    OZAYN_PIXEL_FORMAT_BGR24,
+    OZAYN_PIXEL_FORMAT_GRAY8,
+    OZAYN_PIXEL_FORMAT_YUYV,
+    OZAYN_PIXEL_FORMAT_MJPEG
+} OzaynPixelFormat;
+
+/* ---- Camera Info ---- */
 
 typedef struct {
-    int      available;
-    uint32_t width;
-    uint32_t height;
-    uint32_t fps;
-} ozayn_camera_info_t;
+    unsigned int index;
+    char id[OZAYN_MAX_CAMERA_ID];
+    char name[OZAYN_MAX_CAMERA_NAME];
+    int available;
+    unsigned int width;
+    unsigned int height;
+    unsigned int fps;
+} OzaynCameraInfo;
 
-/* Query camera info. Stub returns available=0. */
-ozayn_result_t ozayn_camera_info(ozayn_camera_info_t *info);
+/* ---- Camera Frame ---- */
+
+typedef struct {
+    unsigned int width;
+    unsigned int height;
+    unsigned int stride;
+    OzaynPixelFormat format;
+    unsigned char *data;
+    size_t data_size;
+} OzaynCameraFrame;
+
+/* ---- Camera State ---- */
+
+typedef struct {
+    int initialized;
+    int available;
+    int open;
+    int streaming;
+    unsigned int count;
+} OzaynCameraState;
+
+/* ---- Camera Lifecycle ---- */
+
+/* Initialize camera subsystem. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_camera_init(void);
+
+/* Shutdown camera subsystem. Safe to call multiple times. */
+void ozayn_camera_shutdown(void);
+
+/* Check if camera subsystem is available. Returns 1 if available, 0 otherwise. */
+int ozayn_camera_is_available(void);
+
+/* ---- Device Enumeration ---- */
+
+/* Get number of cameras. Returns count or 0 if unavailable. */
+unsigned int ozayn_camera_get_count(void);
+
+/* Get camera info by index. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_camera_get_info(unsigned int index, OzaynCameraInfo *info);
+
+/* ---- Device Control ---- */
+
+/* Open camera by index. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_camera_open(unsigned int index);
+
+/* Close currently open camera. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_camera_close(void);
+
+/* ---- Capture Control ---- */
+
+/* Start video capture. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_camera_start(void);
+
+/* Stop video capture. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_camera_stop(void);
+
+/* Capture a single frame. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_camera_capture(OzaynCameraFrame *frame);
+
+/* ---- Configuration ---- */
+
+/* Set capture resolution. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_camera_set_resolution(unsigned int width, unsigned int height);
+
+/* Set capture frame rate. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_camera_set_fps(unsigned int fps);
+
+/* ---- Frame Management ---- */
+
+/* Release frame data. Safe to call with NULL or already released frames. */
+void ozayn_camera_frame_release(OzaynCameraFrame *frame);
 
 /* ================================================================
  * H. Audio (stubs — implemented in Section 06)

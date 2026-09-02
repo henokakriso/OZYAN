@@ -53,6 +53,7 @@ extern int run_display_tests(void);
 extern int run_window_tests(void);
 extern int run_input_tests(void);
 extern int run_keyboard_tests(void);
+extern int run_camera_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -122,6 +123,7 @@ int main(void) {
     suite_fail = run_window_tests();      suite_pass = 26 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_input_tests();       suite_pass = 23 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_keyboard_tests();    suite_pass = 23 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_camera_tests();      suite_pass = 29 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

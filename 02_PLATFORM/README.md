@@ -489,6 +489,158 @@ Tests verify:
 - Modifier constants
 - Key enumeration range
 
+## Step 09 — Camera Device Abstraction
+
+Cross-platform camera enumeration, configuration, and frame capture.
+
+### Camera Lifecycle
+
+```
+ozayn_camera_init()
+        ↓
+enumerate devices
+        ↓
+ozayn_camera_open(index)
+        ↓
+configure camera
+        ↓
+ozayn_camera_start()
+        ↓
+capture frames
+        ↓
+ozayn_camera_stop()
+        ↓
+ozayn_camera_close()
+        ↓
+ozayn_camera_shutdown()
+```
+
+### Public API
+
+```c
+/* Camera Lifecycle */
+ozayn_result_t ozayn_camera_init(void);
+void           ozayn_camera_shutdown(void);
+int            ozayn_camera_is_available(void);
+
+/* Device Enumeration */
+unsigned int   ozayn_camera_get_count(void);
+ozayn_result_t ozayn_camera_get_info(unsigned int index, OzaynCameraInfo *info);
+
+/* Device Control */
+ozayn_result_t ozayn_camera_open(unsigned int index);
+ozayn_result_t ozayn_camera_close(void);
+
+/* Capture Control */
+ozayn_result_t ozayn_camera_start(void);
+ozayn_result_t ozayn_camera_stop(void);
+ozayn_result_t ozayn_camera_capture(OzaynCameraFrame *frame);
+
+/* Configuration */
+ozayn_result_t ozayn_camera_set_resolution(unsigned int width, unsigned int height);
+ozayn_result_t ozayn_camera_set_fps(unsigned int fps);
+
+/* Frame Management */
+void           ozayn_camera_frame_release(OzaynCameraFrame *frame);
+```
+
+### Data Structures
+
+```c
+typedef struct {
+    unsigned int index;
+    char id[256];
+    char name[256];
+    int available;
+    unsigned int width;
+    unsigned int height;
+    unsigned int fps;
+} OzaynCameraInfo;
+
+typedef struct {
+    unsigned int width;
+    unsigned int height;
+    unsigned int stride;
+    OzaynPixelFormat format;
+    unsigned char *data;
+    size_t data_size;
+} OzaynCameraFrame;
+
+typedef enum {
+    OZAYN_PIXEL_FORMAT_UNKNOWN = 0,
+    OZAYN_PIXEL_FORMAT_RGB24,
+    OZAYN_PIXEL_FORMAT_BGR24,
+    OZAYN_PIXEL_FORMAT_GRAY8,
+    OZAYN_PIXEL_FORMAT_YUYV,
+    OZAYN_PIXEL_FORMAT_MJPEG
+} OzaynPixelFormat;
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_camera_shutdown()` is idempotent and safe to call multiple times
+- `ozayn_camera_frame_release()` is safe to call with NULL or already released frames
+- Invalid lifecycle transitions are rejected (capture before open, start twice, etc.)
+- Works in headless/no-camera environments (count=0, available=0)
+- No hidden camera activation, no covert recording
+- No frame data written to disk or transmitted over network
+- Camera only accessed through explicit OZAYN operations
+
+### Platform Implementations
+
+- Linux: V4L2 (Video4Linux2) for device enumeration, format queries, mmap buffer capture
+- macOS: Stub (requires AVFoundation framework + camera privacy permissions)
+- Windows: Stub (requires Media Foundation API)
+
+### Linux Implementation
+
+- Enumerates `/dev/video*` devices via V4L2
+- Uses `VIDIOC_QUERYCAP` to verify capture capability
+- Uses `VIDIOC_G_FMT` to query default resolution
+- Uses `VIDIOC_G_PARM` to query frame rate
+- MMAP buffer allocation for zero-copy capture
+- Non-blocking device open
+
+### Linux Limitations
+
+- Requires V4L2 kernel support
+- Requires read access to `/dev/video*` devices
+- Headless systems report unavailable
+- Some devices may not support all pixel formats
+
+### macOS Permissions
+
+- Camera privacy permissions required (NSCameraUsageDescription)
+- If permission is denied, subsystem reports unavailable
+- Full implementation requires AVFoundation (future step)
+
+### Windows Behavior
+
+- Camera subsystem stub returns unavailable
+- Full implementation requires Media Foundation (future step)
+
+### Headless Behavior
+
+- Camera subsystem gracefully reports unavailable when no camera devices exist
+- Camera count returns 0 in headless environments
+- No crashes or errors in headless mode
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Device enumeration (count before/after init, get info valid/invalid/null/before init)
+- Lifecycle transitions (open invalid, start before open, stop before start, capture before open/null/before init, close before open/before init)
+- Configuration safety (set resolution/fps before init, zero values)
+- Frame release (null, clears fields)
+- Pixel format constants
+
 ## Directory Structure
 
 ```
@@ -580,6 +732,17 @@ make test
 - Modifier constants
 - Key enumeration range
 
+### Step 09 Tests (29 tests)
+- Camera init/shutdown (basic + idempotent)
+- Camera availability (before/after init)
+- Camera count (before/after init)
+- Camera get info (valid index, invalid index, null, before init)
+- Lifecycle transitions (open invalid index, open before init, start before open, stop before start, capture before open, capture null, capture before init, close before open, close before init)
+- Configuration (set resolution/fps before init, zero values)
+- Frame release (null, clears fields)
+- Camera shutdown (basic + idempotent + before init)
+- Pixel format constants
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -590,4 +753,5 @@ make test
 - [x] Step 06: Window Management
 - [x] Step 07: Input & Mouse Abstraction
 - [x] Step 08: Keyboard & Input Event Abstraction
-- [ ] Steps 09-35: (future)
+- [x] Step 09: Camera Device Abstraction
+- [ ] Steps 10-35: (future)

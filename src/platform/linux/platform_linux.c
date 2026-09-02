@@ -27,6 +27,13 @@
 #include <X11/keysym.h>
 #endif
 
+/* V4L2 headers for camera abstraction */
+#ifdef OZAYN_OS_LINUX
+#include <linux/videodev2.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#endif
+
 /*
  * platform_linux.c — Linux platform implementation.
  *
@@ -933,15 +940,367 @@ int ozayn_network_ping(const char *host) {
 }
 
 /* ================================================================
- * F. Camera (stub)
- * ================================================================ */
+ * G. Camera Device Abstraction (Step 09)
+ * ================================================================
+ *
+ * Uses V4L2 (Video4Linux2) for camera enumeration and capture.
+ * Handles missing devices, permission errors, and headless systems.
+ */
 
-ozayn_result_t ozayn_camera_info(ozayn_camera_info_t *info) {
-    if (!info) return OZAYN_ERR_NULL;
-    memset(info, 0, sizeof(ozayn_camera_info_t));
-    /* TODO: Section 05 — enumerate /dev/video* devices */
-    info->available = 0;
+static OzaynCameraState _ozayn_camera = {0};
+static int _ozayn_camera_fd = -1;
+static unsigned int _ozayn_camera_open_index = 0;
+static struct {
+    void *start;
+    size_t length;
+} _ozayn_camera_buffers[4];
+static unsigned int _ozayn_camera_buf_count = 0;
+static OzaynCameraInfo _ozayn_camera_infos[OZAYN_MAX_CAMERAS];
+
+static void _ozayn_camera_enumerate(void) {
+    _ozayn_camera.count = 0;
+    for (unsigned int i = 0; i < OZAYN_MAX_CAMERAS; i++) {
+        char dev_path[64];
+        snprintf(dev_path, sizeof(dev_path), "/dev/video%u", i);
+
+        int fd = open(dev_path, O_RDWR | O_NONBLOCK);
+        if (fd < 0) continue;
+
+        struct v4l2_capability cap;
+        memset(&cap, 0, sizeof(cap));
+        if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0) {
+            close(fd);
+            continue;
+        }
+
+        /* Skip devices that don't support video capture */
+        if (!(cap.device_caps & V4L2_CAP_VIDEO_CAPTURE)) {
+            close(fd);
+            continue;
+        }
+
+        OzaynCameraInfo *info = &_ozayn_camera_infos[_ozayn_camera.count];
+        memset(info, 0, sizeof(OzaynCameraInfo));
+        info->index = _ozayn_camera.count;
+        info->available = 1;
+
+        /* Device ID */
+        snprintf(info->id, OZAYN_MAX_CAMERA_ID, "/dev/video%u", i);
+
+        /* Device name */
+        strncpy(info->name, (const char *)cap.card, OZAYN_MAX_CAMERA_NAME - 1);
+
+        /* Query default format */
+        struct v4l2_format fmt;
+        memset(&fmt, 0, sizeof(fmt));
+        fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        if (ioctl(fd, VIDIOC_G_FMT, &fmt) == 0) {
+            info->width = fmt.fmt.pix.width;
+            info->height = fmt.fmt.pix.height;
+        }
+
+        /* Query frame rate */
+        struct v4l2_streamparm parm;
+        memset(&parm, 0, sizeof(parm));
+        parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        if (ioctl(fd, VIDIOC_G_PARM, &parm) == 0) {
+            if (parm.parm.capture.timeperframe.numerator > 0) {
+                info->fps = parm.parm.capture.timeperframe.denominator /
+                           parm.parm.capture.timeperframe.numerator;
+            }
+        }
+
+        close(fd);
+        _ozayn_camera.count++;
+    }
+}
+
+ozayn_result_t ozayn_camera_init(void) {
+    if (_ozayn_camera.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_camera, 0, sizeof(OzaynCameraState));
+    memset(_ozayn_camera_infos, 0, sizeof(_ozayn_camera_infos));
+    _ozayn_camera_fd = -1;
+
+    _ozayn_camera_enumerate();
+    _ozayn_camera.available = (_ozayn_camera.count > 0) ? 1 : 0;
+    _ozayn_camera.initialized = 1;
+
+    LOG_INFO("CAMERA", "Camera subsystem initialized (count=%u, available=%s)",
+             _ozayn_camera.count, _ozayn_camera.available ? "yes" : "no");
+
     return OZAYN_OK;
+}
+
+void ozayn_camera_shutdown(void) {
+    if (!_ozayn_camera.initialized) return;
+
+    /* Auto-close if open */
+    if (_ozayn_camera.open) {
+        ozayn_camera_stop();
+        ozayn_camera_close();
+    }
+
+    memset(&_ozayn_camera, 0, sizeof(OzaynCameraState));
+    _ozayn_camera_fd = -1;
+    LOG_INFO("CAMERA", "Camera subsystem shut down");
+}
+
+int ozayn_camera_is_available(void) {
+    return _ozayn_camera.available;
+}
+
+unsigned int ozayn_camera_get_count(void) {
+    if (!_ozayn_camera.initialized) return 0;
+    return _ozayn_camera.count;
+}
+
+ozayn_result_t ozayn_camera_get_info(unsigned int index, OzaynCameraInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_camera.count) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_camera_infos[index], sizeof(OzaynCameraInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_camera_open(unsigned int index) {
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    if (_ozayn_camera.open) return OZAYN_ERR_STATE;
+    if (index >= _ozayn_camera.count) return OZAYN_ERR;
+
+    char dev_path[64];
+    snprintf(dev_path, sizeof(dev_path), "/dev/video%u", index);
+
+    _ozayn_camera_fd = open(dev_path, O_RDWR | O_NONBLOCK);
+    if (_ozayn_camera_fd < 0) {
+        LOG_WARN("CAMERA", "Failed to open %s: %s", dev_path, strerror(errno));
+        return OZAYN_ERR;
+    }
+
+    _ozayn_camera_open_index = index;
+    _ozayn_camera.open = 1;
+
+    LOG_INFO("CAMERA", "Camera opened: %s", _ozayn_camera_infos[index].name);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_camera_close(void) {
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    if (!_ozayn_camera.open) return OZAYN_ERR_STATE;
+
+    if (_ozayn_camera.streaming) {
+        ozayn_camera_stop();
+    }
+
+    if (_ozayn_camera_fd >= 0) {
+        close(_ozayn_camera_fd);
+        _ozayn_camera_fd = -1;
+    }
+
+    _ozayn_camera.open = 0;
+    _ozayn_camera_open_index = 0;
+
+    LOG_INFO("CAMERA", "Camera closed");
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_camera_start(void) {
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    if (!_ozayn_camera.open) return OZAYN_ERR_STATE;
+    if (_ozayn_camera.streaming) return OZAYN_ERR_STATE;
+    if (_ozayn_camera_fd < 0) return OZAYN_ERR;
+
+    /* Request buffers */
+    struct v4l2_requestbuffers req;
+    memset(&req, 0, sizeof(req));
+    req.count = 4;
+    req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    req.memory = V4L2_MEMORY_MMAP;
+
+    if (ioctl(_ozayn_camera_fd, VIDIOC_REQBUFS, &req) < 0) {
+        LOG_WARN("CAMERA", "VIDIOC_REQBUFS failed: %s", strerror(errno));
+        return OZAYN_ERR;
+    }
+
+    _ozayn_camera_buf_count = req.count;
+
+    /* Map buffers */
+    for (unsigned int i = 0; i < _ozayn_camera_buf_count; i++) {
+        struct v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index = i;
+
+        if (ioctl(_ozayn_camera_fd, VIDIOC_QUERYBUF, &buf) < 0) {
+            LOG_WARN("CAMERA", "VIDIOC_QUERYBUF failed: %s", strerror(errno));
+            ozayn_camera_stop();
+            return OZAYN_ERR;
+        }
+
+        _ozayn_camera_buffers[i].length = buf.length;
+        _ozayn_camera_buffers[i].start = mmap(NULL, buf.length,
+            PROT_READ | PROT_WRITE, MAP_SHARED, _ozayn_camera_fd, buf.m.offset);
+
+        if (_ozayn_camera_buffers[i].start == MAP_FAILED) {
+            LOG_WARN("CAMERA", "mmap failed: %s", strerror(errno));
+            _ozayn_camera_buffers[i].start = NULL;
+            ozayn_camera_stop();
+            return OZAYN_ERR;
+        }
+    }
+
+    /* Queue all buffers */
+    for (unsigned int i = 0; i < _ozayn_camera_buf_count; i++) {
+        struct v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.index = i;
+
+        if (ioctl(_ozayn_camera_fd, VIDIOC_QBUF, &buf) < 0) {
+            LOG_WARN("CAMERA", "VIDIOC_QBUF failed: %s", strerror(errno));
+            ozayn_camera_stop();
+            return OZAYN_ERR;
+        }
+    }
+
+    /* Start streaming */
+    enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    if (ioctl(_ozayn_camera_fd, VIDIOC_STREAMON, &type) < 0) {
+        LOG_WARN("CAMERA", "VIDIOC_STREAMON failed: %s", strerror(errno));
+        ozayn_camera_stop();
+        return OZAYN_ERR;
+    }
+
+    _ozayn_camera.streaming = 1;
+    LOG_INFO("CAMERA", "Capture started");
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_camera_stop(void) {
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    if (!_ozayn_camera.streaming) return OZAYN_ERR_STATE;
+
+    /* Stop streaming */
+    if (_ozayn_camera_fd >= 0) {
+        enum v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        ioctl(_ozayn_camera_fd, VIDIOC_STREAMOFF, &type);
+    }
+
+    /* Unmap buffers */
+    for (unsigned int i = 0; i < _ozayn_camera_buf_count; i++) {
+        if (_ozayn_camera_buffers[i].start && _ozayn_camera_buffers[i].start != MAP_FAILED) {
+            munmap(_ozayn_camera_buffers[i].start, _ozayn_camera_buffers[i].length);
+            _ozayn_camera_buffers[i].start = NULL;
+            _ozayn_camera_buffers[i].length = 0;
+        }
+    }
+    _ozayn_camera_buf_count = 0;
+
+    _ozayn_camera.streaming = 0;
+    LOG_INFO("CAMERA", "Capture stopped");
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_camera_capture(OzaynCameraFrame *frame) {
+    if (!frame) return OZAYN_ERR_NULL;
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    if (!_ozayn_camera.open || !_ozayn_camera.streaming) return OZAYN_ERR_STATE;
+    if (_ozayn_camera_fd < 0) return OZAYN_ERR;
+
+    memset(frame, 0, sizeof(OzaynCameraFrame));
+
+    /* Dequeue a buffer */
+    struct v4l2_buffer buf;
+    memset(&buf, 0, sizeof(buf));
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+
+    if (ioctl(_ozayn_camera_fd, VIDIOC_DQBUF, &buf) < 0) {
+        return OZAYN_ERR;
+    }
+
+    /* Fill frame info from current format */
+    struct v4l2_format fmt;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    ioctl(_ozayn_camera_fd, VIDIOC_G_FMT, &fmt);
+
+    frame->width = fmt.fmt.pix.width;
+    frame->height = fmt.fmt.pix.height;
+    frame->stride = fmt.fmt.pix.bytesperline;
+    frame->data = (unsigned char *)_ozayn_camera_buffers[buf.index].start;
+    frame->data_size = buf.bytesused;
+
+    /* Map pixel format */
+    switch (fmt.fmt.pix.pixelformat) {
+        case V4L2_PIX_FMT_RGB24:  frame->format = OZAYN_PIXEL_FORMAT_RGB24; break;
+        case V4L2_PIX_FMT_BGR24:  frame->format = OZAYN_PIXEL_FORMAT_BGR24; break;
+        case V4L2_PIX_FMT_GREY:   frame->format = OZAYN_PIXEL_FORMAT_GRAY8; break;
+        case V4L2_PIX_FMT_YUYV:   frame->format = OZAYN_PIXEL_FORMAT_YUYV; break;
+        case V4L2_PIX_FMT_MJPEG:  frame->format = OZAYN_PIXEL_FORMAT_MJPEG; break;
+        default:                  frame->format = OZAYN_PIXEL_FORMAT_UNKNOWN; break;
+    }
+
+    /* Re-queue the buffer */
+    ioctl(_ozayn_camera_fd, VIDIOC_QBUF, &buf);
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_camera_set_resolution(unsigned int width, unsigned int height) {
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    if (!_ozayn_camera.open) return OZAYN_ERR_STATE;
+    if (_ozayn_camera_fd < 0) return OZAYN_ERR;
+    if (width == 0 || height == 0) return OZAYN_ERR;
+
+    struct v4l2_format fmt;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    fmt.fmt.pix.width = width;
+    fmt.fmt.pix.height = height;
+
+    /* Try to set the format — driver may adjust to nearest supported */
+    if (ioctl(_ozayn_camera_fd, VIDIOC_S_FMT, &fmt) < 0) {
+        LOG_WARN("CAMERA", "Failed to set resolution %ux%u: %s", width, height, strerror(errno));
+        return OZAYN_ERR;
+    }
+
+    LOG_INFO("CAMERA", "Resolution set to %ux%u", fmt.fmt.pix.width, fmt.fmt.pix.height);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_camera_set_fps(unsigned int fps) {
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    if (!_ozayn_camera.open) return OZAYN_ERR_STATE;
+    if (_ozayn_camera_fd < 0) return OZAYN_ERR;
+    if (fps == 0) return OZAYN_ERR;
+
+    struct v4l2_streamparm parm;
+    memset(&parm, 0, sizeof(parm));
+    parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    parm.parm.capture.timeperframe.numerator = 1;
+    parm.parm.capture.timeperframe.denominator = fps;
+
+    if (ioctl(_ozayn_camera_fd, VIDIOC_S_PARM, &parm) < 0) {
+        LOG_WARN("CAMERA", "Failed to set FPS to %u: %s", fps, strerror(errno));
+        return OZAYN_ERR;
+    }
+
+    LOG_INFO("CAMERA", "FPS set to %u", fps);
+    return OZAYN_OK;
+}
+
+void ozayn_camera_frame_release(OzaynCameraFrame *frame) {
+    if (!frame) return;
+    frame->data = NULL;
+    frame->data_size = 0;
+    frame->width = 0;
+    frame->height = 0;
+    frame->stride = 0;
+    frame->format = OZAYN_PIXEL_FORMAT_UNKNOWN;
 }
 
 /* ================================================================

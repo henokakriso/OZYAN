@@ -724,14 +724,93 @@ ozayn_result_t ozayn_window_refresh(void) {
 }
 
 /* ================================================================
- * G. Camera (stub)
- * ================================================================ */
+ * G. Camera Device Abstraction (Step 09)
+ * ================================================================
+ *
+ * macOS stub — requires AVFoundation framework for full implementation.
+ * Camera privacy permissions are required.
+ */
 
-ozayn_result_t ozayn_camera_info(ozayn_camera_info_t *info) {
-    if (!info) return OZAYN_ERR_NULL;
-    memset(info, 0, sizeof(ozayn_camera_info_t));
-    info->available = 0;
+static OzaynCameraState _ozayn_camera = {0};
+
+ozayn_result_t ozayn_camera_init(void) {
+    if (_ozayn_camera.initialized) return OZAYN_OK;
+    memset(&_ozayn_camera, 0, sizeof(OzaynCameraState));
+    /* TODO: AVCaptureDevice discovery via AVFoundation */
+    _ozayn_camera.initialized = 1;
     return OZAYN_OK;
+}
+
+void ozayn_camera_shutdown(void) {
+    if (!_ozayn_camera.initialized) return;
+    memset(&_ozayn_camera, 0, sizeof(OzaynCameraState));
+}
+
+int ozayn_camera_is_available(void) {
+    return _ozayn_camera.available;
+}
+
+unsigned int ozayn_camera_get_count(void) {
+    if (!_ozayn_camera.initialized) return 0;
+    return _ozayn_camera.count;
+}
+
+ozayn_result_t ozayn_camera_get_info(unsigned int index, OzaynCameraInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_camera.count) return OZAYN_ERR;
+    memset(info, 0, sizeof(OzaynCameraInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_camera_open(unsigned int index) {
+    (void)index;
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_camera_close(void) {
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_camera_start(void) {
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_camera_stop(void) {
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_camera_capture(OzaynCameraFrame *frame) {
+    if (!frame) return OZAYN_ERR_NULL;
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    memset(frame, 0, sizeof(OzaynCameraFrame));
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_camera_set_resolution(unsigned int width, unsigned int height) {
+    (void)width; (void)height;
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_camera_set_fps(unsigned int fps) {
+    (void)fps;
+    if (!_ozayn_camera.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+void ozayn_camera_frame_release(OzaynCameraFrame *frame) {
+    if (!frame) return;
+    frame->data = NULL;
+    frame->data_size = 0;
+    frame->width = 0;
+    frame->height = 0;
+    frame->stride = 0;
+    frame->format = OZAYN_PIXEL_FORMAT_UNKNOWN;
 }
 
 /* ================================================================
