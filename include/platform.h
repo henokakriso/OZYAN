@@ -31,6 +31,7 @@
  *   M. Power & Battery Information Abstraction (Step 13)
  *   N. Notification System Abstraction (Step 14)
  *   O. Clipboard Abstraction (Step 15)
+ *   P. Environment & User Session Abstraction (Step 16)
  */
 
 /* ================================================================
@@ -990,6 +991,48 @@ ozayn_result_t ozayn_clipboard_set_text(const char *text);
 /* ---- Clipboard Clear ---- */
 
 ozayn_result_t ozayn_clipboard_clear(void);
+
+/* ================================================================
+ * P. Environment & User Session Abstraction (Step 16)
+ * ================================================================
+ *
+ * Cross-platform environment variable access and user-session
+ * information. Read-only — no modification of environment or
+ * system state. No credential or secret extraction.
+ */
+
+#define OZAYN_MAX_ENV_VAR_NAME  256
+#define OZAYN_MAX_ENV_VAR_VALUE 4096
+#define OZAYN_MAX_PATH          1024
+#define OZAYN_MAX_USERNAME      256
+#define OZAYN_MAX_HOSTNAME      256
+
+/* ---- Environment Lifecycle ---- */
+
+ozayn_result_t ozayn_environment_init(void);
+void           ozayn_environment_shutdown(void);
+
+/* ---- Environment Queries ---- */
+
+int            ozayn_environment_is_available(void);
+
+/* ---- Environment Variable Access ---- */
+
+ozayn_result_t ozayn_environment_get_variable(const char *name,
+                                               char *buffer,
+                                               size_t buffer_size,
+                                               size_t *required_size);
+
+/* ---- Directory Queries ---- */
+
+ozayn_result_t ozayn_environment_get_home_directory(char *buffer, size_t buffer_size);
+ozayn_result_t ozayn_environment_get_temp_directory(char *buffer, size_t buffer_size);
+ozayn_result_t ozayn_environment_get_current_directory(char *buffer, size_t buffer_size);
+
+/* ---- User/Host Information ---- */
+
+ozayn_result_t ozayn_environment_get_username(char *buffer, size_t buffer_size);
+ozayn_result_t ozayn_environment_get_hostname(char *buffer, size_t buffer_size);
 
 /* ================================================================
  * Platform Lifecycle

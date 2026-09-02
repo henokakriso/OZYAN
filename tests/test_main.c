@@ -60,6 +60,7 @@ extern int run_network_tests(void);
 extern int run_power_tests(void);
 extern int run_notification_tests(void);
 extern int run_clipboard_tests(void);
+extern int run_environment_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -136,6 +137,7 @@ int main(void) {
     suite_fail = run_power_tests();         suite_pass = 16 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_notification_tests();  suite_pass = 14 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_clipboard_tests();     suite_pass = 19 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_environment_tests();   suite_pass = 24 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

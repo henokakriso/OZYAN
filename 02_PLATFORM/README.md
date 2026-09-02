@@ -1388,6 +1388,109 @@ Tests verify:
 - NULL text rejection
 - Shutdown before init
 
+## Step 16 — Environment & User Session Abstraction
+
+Cross-platform environment variable access and user-session information. Read-only — no modification of environment or system state.
+
+### Environment Lifecycle
+
+```
+ozayn_environment_init()
+        ↓
+query environment
+        ↓
+ozayn_environment_shutdown()
+```
+
+### Public API
+
+```c
+/* Environment Lifecycle */
+ozayn_result_t ozayn_environment_init(void);
+void           ozayn_environment_shutdown(void);
+
+/* Environment Queries */
+int            ozayn_environment_is_available(void);
+
+/* Environment Variable Access */
+ozayn_result_t ozayn_environment_get_variable(const char *name,
+                                               char *buffer,
+                                               size_t buffer_size,
+                                               size_t *required_size);
+
+/* Directory Queries */
+ozayn_result_t ozayn_environment_get_home_directory(char *buffer, size_t buffer_size);
+ozayn_result_t ozayn_environment_get_temp_directory(char *buffer, size_t buffer_size);
+ozayn_result_t ozayn_environment_get_current_directory(char *buffer, size_t buffer_size);
+
+/* User/Host Information */
+ozayn_result_t ozayn_environment_get_username(char *buffer, size_t buffer_size);
+ozayn_result_t ozayn_environment_get_hostname(char *buffer, size_t buffer_size);
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_environment_shutdown()` is idempotent and safe to call multiple times
+- Missing environment variables return empty string, not error
+- Empty names rejected
+- Buffer overflow prevention: never writes beyond `buffer_size`
+- NUL-termination guaranteed when buffer is large enough
+- Required size querying supported (pass NULL buffer)
+- No environment modification, no credential extraction
+- No environment variables logged or dumped
+
+### Platform Implementations
+
+- Linux: POSIX APIs (`getenv`, `getpwuid`, `gethostname`, `getcwd`)
+- macOS: POSIX APIs with NSFileManager fallbacks
+- Windows: `getenv` with Win32 fallbacks (`USERPROFILE`, `COMPUTERNAME`)
+
+### Linux Implementation
+
+- `getenv()` for environment variables
+- `getpwuid(getuid())` for home directory and username fallback
+- `gethostname()` for hostname
+- `getcwd()` for current working directory
+- `TMPDIR` / `TMP` / `/tmp` for temp directory
+
+### Directory Behavior
+
+- Home: `$HOME` → `/home/user`
+- Temp: `$TMPDIR` → `/tmp`
+- Current: `getcwd()` → actual working directory
+- Username: `$USER` → `getpwuid` fallback
+- Hostname: `gethostname()` → local machine name
+
+### Security
+
+- No environment variable logging
+- No credential or secret extraction
+- No password retrieval
+- No token extraction
+- No network discovery
+- Read-only access to environment
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Existing variable retrieval (PATH)
+- Missing variable handling
+- Empty/null name rejection
+- Required size reporting
+- Small buffer truncation
+- Home/temp/current directory retrieval
+- Username and hostname retrieval
+- NULL parameter handling
+- Small buffer handling for directories
+- Shutdown before init
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1405,4 +1508,5 @@ Tests verify:
 - [x] Step 13: Power & Battery Information Abstraction
 - [x] Step 14: Notification System Abstraction
 - [x] Step 15: Clipboard Abstraction
-- [ ] Steps 16-35: (future)
+- [x] Step 16: Environment & User Session Abstraction
+- [ ] Steps 17-35: (future)

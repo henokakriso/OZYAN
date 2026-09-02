@@ -1143,6 +1143,161 @@ ozayn_result_t ozayn_clipboard_clear(void) {
 }
 
 /* ================================================================
+ * P. Environment & User Session Abstraction (Step 16)
+ * ================================================================
+ *
+ * macOS stub — requires NSProcessInfo / NSFileManager for full
+ * implementation. Uses POSIX fallbacks where possible.
+ */
+
+#include <unistd.h>
+#include <limits.h>
+#include <pwd.h>
+
+static int _ozayn_env_initialized = 0;
+
+ozayn_result_t ozayn_environment_init(void) {
+    if (_ozayn_env_initialized) return OZAYN_OK;
+    _ozayn_env_initialized = 1;
+    LOG_INFO("ENV", "Environment subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_environment_shutdown(void) {
+    if (!_ozayn_env_initialized) return;
+    _ozayn_env_initialized = 0;
+    LOG_INFO("ENV", "Environment subsystem shut down");
+}
+
+int ozayn_environment_is_available(void) {
+    return _ozayn_env_initialized;
+}
+
+ozayn_result_t ozayn_environment_get_variable(const char *name,
+                                               char *buffer,
+                                               size_t buffer_size,
+                                               size_t *required_size) {
+    if (!name || name[0] == '\0') return OZAYN_ERR_NULL;
+    if (!_ozayn_env_initialized) return OZAYN_ERR;
+
+    const char *value = getenv(name);
+    if (!value) {
+        if (buffer && buffer_size > 0) buffer[0] = '\0';
+        if (required_size) *required_size = 0;
+        return OZAYN_OK;
+    }
+
+    size_t len = strlen(value);
+    if (required_size) *required_size = len + 1;
+
+    if (!buffer || buffer_size == 0) return OZAYN_OK;
+
+    size_t copy_len = (len < buffer_size - 1) ? len : buffer_size - 1;
+    memcpy(buffer, value, copy_len);
+    buffer[copy_len] = '\0';
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_environment_get_home_directory(char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) return OZAYN_ERR_NULL;
+    if (!_ozayn_env_initialized) return OZAYN_ERR;
+
+    const char *home = getenv("HOME");
+    if (!home) {
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) home = pw->pw_dir;
+    }
+
+    if (!home) {
+        buffer[0] = '\0';
+        return OZAYN_ERR;
+    }
+
+    size_t len = strlen(home);
+    size_t copy_len = (len < buffer_size - 1) ? len : buffer_size - 1;
+    memcpy(buffer, home, copy_len);
+    buffer[copy_len] = '\0';
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_environment_get_temp_directory(char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) return OZAYN_ERR_NULL;
+    if (!_ozayn_env_initialized) return OZAYN_ERR;
+
+    const char *tmp = getenv("TMPDIR");
+    if (!tmp) tmp = "/tmp";
+
+    size_t len = strlen(tmp);
+    size_t copy_len = (len < buffer_size - 1) ? len : buffer_size - 1;
+    memcpy(buffer, tmp, copy_len);
+    buffer[copy_len] = '\0';
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_environment_get_current_directory(char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) return OZAYN_ERR_NULL;
+    if (!_ozayn_env_initialized) return OZAYN_ERR;
+
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        buffer[0] = '\0';
+        return OZAYN_ERR;
+    }
+
+    size_t len = strlen(cwd);
+    size_t copy_len = (len < buffer_size - 1) ? len : buffer_size - 1;
+    memcpy(buffer, cwd, copy_len);
+    buffer[copy_len] = '\0';
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_environment_get_username(char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) return OZAYN_ERR_NULL;
+    if (!_ozayn_env_initialized) return OZAYN_ERR;
+
+    const char *user = getenv("USER");
+    if (!user) {
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) user = pw->pw_name;
+    }
+
+    if (!user) {
+        buffer[0] = '\0';
+        return OZAYN_ERR;
+    }
+
+    size_t len = strlen(user);
+    size_t copy_len = (len < buffer_size - 1) ? len : buffer_size - 1;
+    memcpy(buffer, user, copy_len);
+    buffer[copy_len] = '\0';
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_environment_get_hostname(char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) return OZAYN_ERR_NULL;
+    if (!_ozayn_env_initialized) return OZAYN_ERR;
+
+    char host[256];
+    if (gethostname(host, sizeof(host)) != 0) {
+        buffer[0] = '\0';
+        return OZAYN_ERR;
+    }
+    host[255] = '\0';
+
+    size_t len = strlen(host);
+    size_t copy_len = (len < buffer_size - 1) ? len : buffer_size - 1;
+    memcpy(buffer, host, copy_len);
+    buffer[copy_len] = '\0';
+
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *
