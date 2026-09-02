@@ -746,9 +746,166 @@ ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info) {
 }
 
 /* ================================================================
- * I. Input (stub)
- * ================================================================ */
+ * I. Input & Mouse Abstraction (Step 07)
+ * ================================================================
+ *
+ * Uses Core Graphics APIs for mouse position and button control.
+ * Coordinate convention: (0,0) = top-left of primary display.
+ * X increases rightward, Y increases downward.
+ *
+ * macOS Permission Note:
+ *   Accessibility permissions are required for mouse movement/control.
+ *   If permission is denied, the subsystem reports unavailable.
+ */
 
+#include <ApplicationServices/ApplicationServices.h>
+
+static OzaynInputState _ozayn_input = {0};
+
+static int _ozayn_input_check_accessibility(void) {
+    /* Check if accessibility permissions are granted */
+    CFDictionaryRef options = CFDictionaryCreate(
+        kCFAllocatorDefault,
+        (const void **)&kAXTrustedCheckOptionPrompt,
+        (const void **)&kCFBooleanTrue,
+        1,
+        &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks
+    );
+    int trusted = AXIsProcessTrustedWithOptions(options);
+    CFRelease(options);
+    return trusted;
+}
+
+ozayn_result_t ozayn_input_init(void) {
+    if (_ozayn_input.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_input, 0, sizeof(OzaynInputState));
+
+    /* Check accessibility permissions */
+    if (_ozayn_input_check_accessibility()) {
+        _ozayn_input.available = 1;
+        _ozayn_input.device_info.has_mouse = 1;
+        _ozayn_input.device_info.has_keyboard = 1;
+    }
+
+    _ozayn_input.initialized = 1;
+
+    LOG_INFO("INPUT", "Input subsystem initialized (available=%s, accessibility=%s)",
+             _ozayn_input.available ? "yes" : "no",
+             _ozayn_input_check_accessibility() ? "granted" : "denied");
+
+    return OZAYN_OK;
+}
+
+void ozayn_input_shutdown(void) {
+    if (!_ozayn_input.initialized) return;
+
+    memset(&_ozayn_input, 0, sizeof(OzaynInputState));
+    LOG_INFO("INPUT", "Input subsystem shut down");
+}
+
+int ozayn_input_is_available(void) {
+    return _ozayn_input.available;
+}
+
+ozayn_result_t ozayn_input_device_info(OzaynInputDeviceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_input.device_info, sizeof(OzaynInputDeviceInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_input_get_mouse_position(int32_t *x, int32_t *y) {
+    if (!x || !y) return OZAYN_ERR_NULL;
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    CGEventRef event = CGEventCreate(NULL);
+    if (!event) return OZAYN_ERR;
+
+    CGPoint cursor = CGEventGetLocation(event);
+    CFRelease(event);
+
+    *x = (int32_t)cursor.x;
+    *y = (int32_t)cursor.y;
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_input_get_mouse_state(OzaynMouseState *state) {
+    if (!state) return OZAYN_ERR_NULL;
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    memset(state, 0, sizeof(OzaynMouseState));
+
+    CGEventRef event = CGEventCreate(NULL);
+    if (!event) return OZAYN_ERR;
+
+    CGPoint cursor = CGEventGetLocation(event);
+    CGEventFlags flags = CGEventGetFlags(event);
+    CFRelease(event);
+
+    state->x = (int32_t)cursor.x;
+    state->y = (int32_t)cursor.y;
+    state->left_button = (flags & kCGEventFlagMaskLeftCluster) ? 1 : 0;
+    state->right_button = (flags & kCGEventFlagMaskRightCluster) ? 1 : 0;
+    state->available = 1;
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_input_move_mouse(int32_t x, int32_t y) {
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    CGEventRef move = CGEventCreateMouseEvent(NULL, kCGEventMouseMoved, CGPointMake(x, y), 0);
+    if (!move) return OZAYN_ERR;
+
+    CGEventPost(kCGHIDEventTap, move);
+    CFRelease(move);
+    return OZAYN_OK;
+}
+
+static ozayn_result_t _ozayn_input_button_event(CGEventType type, CGMouseButton button) {
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    CGPoint current;
+    CGEventRef event = CGEventCreate(NULL);
+    if (!event) return OZAYN_ERR;
+    current = CGEventGetLocation(event);
+    CFRelease(event);
+
+    CGEventRef btn = CGEventCreateMouseEvent(NULL, type, current, button);
+    if (!btn) return OZAYN_ERR;
+
+    CGEventPost(kCGHIDEventTap, btn);
+    CFRelease(btn);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_input_mouse_left_down(void) {
+    return _ozayn_input_button_event(kCGEventLeftMouseDown, kCGMouseButtonLeft);
+}
+
+ozayn_result_t ozayn_input_mouse_left_up(void) {
+    return _ozayn_input_button_event(kCGEventLeftMouseUp, kCGMouseButtonLeft);
+}
+
+ozayn_result_t ozayn_input_mouse_right_down(void) {
+    return _ozayn_input_button_event(kCGEventRightMouseDown, kCGMouseButtonRight);
+}
+
+ozayn_result_t ozayn_input_mouse_right_up(void) {
+    return _ozayn_input_button_event(kCGEventRightMouseUp, kCGMouseButtonRight);
+}
+
+ozayn_result_t ozayn_input_mouse_middle_down(void) {
+    return _ozayn_input_button_event(kCGEventOtherMouseDown, kCGMouseButtonCenter);
+}
+
+ozayn_result_t ozayn_input_mouse_middle_up(void) {
+    return _ozayn_input_button_event(kCGEventOtherMouseUp, kCGMouseButtonCenter);
+}
+
+/* Legacy API compatibility */
 ozayn_result_t ozayn_input_info(ozayn_input_info_t *info) {
     if (!info) return OZAYN_ERR_NULL;
     memset(info, 0, sizeof(ozayn_input_info_t));

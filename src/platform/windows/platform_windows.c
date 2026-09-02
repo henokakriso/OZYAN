@@ -708,9 +708,142 @@ ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info) {
 }
 
 /* ================================================================
- * I. Input (stub)
- * ================================================================ */
+ * I. Input & Mouse Abstraction (Step 07)
+ * ================================================================
+ *
+ * Uses Win32 APIs for mouse position and button control.
+ * Coordinate convention: (0,0) = top-left of primary display.
+ * X increases rightward, Y increases downward.
+ */
 
+static OzaynInputState _ozayn_input = {0};
+
+ozayn_result_t ozayn_input_init(void) {
+    if (_ozayn_input.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_input, 0, sizeof(OzaynInputState));
+
+    /* Mouse is always available on Windows */
+    _ozayn_input.available = 1;
+    _ozayn_input.device_info.has_mouse = 1;
+    _ozayn_input.device_info.has_keyboard = 1;
+
+    _ozayn_input.initialized = 1;
+
+    LOG_INFO("INPUT", "Input subsystem initialized (available=%s)",
+             _ozayn_input.available ? "yes" : "no");
+
+    return OZAYN_OK;
+}
+
+void ozayn_input_shutdown(void) {
+    if (!_ozayn_input.initialized) return;
+
+    memset(&_ozayn_input, 0, sizeof(OzaynInputState));
+    LOG_INFO("INPUT", "Input subsystem shut down");
+}
+
+int ozayn_input_is_available(void) {
+    return _ozayn_input.available;
+}
+
+ozayn_result_t ozayn_input_device_info(OzaynInputDeviceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_input.device_info, sizeof(OzaynInputDeviceInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_input_get_mouse_position(int32_t *x, int32_t *y) {
+    if (!x || !y) return OZAYN_ERR_NULL;
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    POINT pt;
+    if (GetCursorPos(&pt)) {
+        *x = (int32_t)pt.x;
+        *y = (int32_t)pt.y;
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_input_get_mouse_state(OzaynMouseState *state) {
+    if (!state) return OZAYN_ERR_NULL;
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    memset(state, 0, sizeof(OzaynMouseState));
+
+    POINT pt;
+    if (GetCursorPos(&pt)) {
+        state->x = (int32_t)pt.x;
+        state->y = (int32_t)pt.y;
+        state->left_button = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) ? 1 : 0;
+        state->middle_button = (GetAsyncKeyState(VK_MBUTTON) & 0x8000) ? 1 : 0;
+        state->right_button = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) ? 1 : 0;
+        state->available = 1;
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_input_move_mouse(int32_t x, int32_t y) {
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    if (SetCursorPos((int)x, (int)y)) {
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+static ozayn_result_t _ozayn_input_button_event(DWORD vk, int press) {
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    INPUT input = {0};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = press ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+
+    if (vk == VK_RBUTTON) {
+        input.mi.dwFlags = press ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
+    } else if (vk == VK_MBUTTON) {
+        input.mi.dwFlags = press ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP;
+    }
+
+    if (SendInput(1, &input, sizeof(INPUT))) {
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_input_mouse_left_down(void) {
+    return _ozayn_input_button_event(VK_LBUTTON, 1);
+}
+
+ozayn_result_t ozayn_input_mouse_left_up(void) {
+    return _ozayn_input_button_event(VK_LBUTTON, 0);
+}
+
+ozayn_result_t ozayn_input_mouse_right_down(void) {
+    return _ozayn_input_button_event(VK_RBUTTON, 1);
+}
+
+ozayn_result_t ozayn_input_mouse_right_up(void) {
+    return _ozayn_input_button_event(VK_RBUTTON, 0);
+}
+
+ozayn_result_t ozayn_input_mouse_middle_down(void) {
+    return _ozayn_input_button_event(VK_MBUTTON, 1);
+}
+
+ozayn_result_t ozayn_input_mouse_middle_up(void) {
+    return _ozayn_input_button_event(VK_MBUTTON, 0);
+}
+
+/* Legacy API compatibility */
 ozayn_result_t ozayn_input_info(ozayn_input_info_t *info) {
     if (!info) return OZAYN_ERR_NULL;
     memset(info, 0, sizeof(ozayn_input_info_t));

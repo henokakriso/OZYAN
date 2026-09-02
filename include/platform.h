@@ -373,8 +373,19 @@ typedef struct {
 ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info);
 
 /* ================================================================
- * I. Input (stubs — implemented in Section 07)
- * ================================================================ */
+ * I. Input & Mouse Abstraction (Step 07)
+ * ================================================================
+ *
+ * Coordinate convention:
+ *   (0,0) = top-left of primary display.
+ *   X increases rightward, Y increases downward.
+ *   Negative coordinates possible with multi-display setups.
+ *   Coordinates match Step 05 Display Abstraction convention.
+ */
+
+#define OZAYN_MAX_INPUT_DEVICES 32
+
+/* ---- Input Device Info ---- */
 
 typedef struct {
     int has_keyboard;
@@ -382,9 +393,79 @@ typedef struct {
     int has_touch;
     int has_microphone;
     int has_camera;
-} ozayn_input_info_t;
+} OzaynInputDeviceInfo;
+
+/* ---- Mouse State ---- */
+
+typedef struct {
+    int32_t  x;            /* pointer X position */
+    int32_t  y;            /* pointer Y position */
+    int      left_button;  /* 1 if pressed, 0 otherwise */
+    int      middle_button;
+    int      right_button;
+    int      available;    /* 1 if mouse input is available */
+} OzaynMouseState;
+
+/* ---- Input Subsystem State ---- */
+
+typedef struct {
+    int              initialized;
+    int              available;
+    OzaynInputDeviceInfo device_info;
+} OzaynInputState;
+
+/* ---- Input Lifecycle ---- */
+
+/* Initialize input subsystem. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_init(void);
+
+/* Shutdown input subsystem. Safe to call multiple times. */
+void ozayn_input_shutdown(void);
+
+/* Check if input subsystem is available. Returns 1 if available, 0 otherwise. */
+int ozayn_input_is_available(void);
+
+/* ---- Input Device Query ---- */
 
 /* Query input device availability. */
+ozayn_result_t ozayn_input_device_info(OzaynInputDeviceInfo *info);
+
+/* ---- Mouse Position ---- */
+
+/* Get current mouse position. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_get_mouse_position(int32_t *x, int32_t *y);
+
+/* Get full mouse state including button states. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_get_mouse_state(OzaynMouseState *state);
+
+/* Move mouse to specified position. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_move_mouse(int32_t x, int32_t y);
+
+/* ---- Mouse Buttons (press/release) ---- */
+
+/* Press left mouse button. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_mouse_left_down(void);
+
+/* Release left mouse button. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_mouse_left_up(void);
+
+/* Press right mouse button. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_mouse_right_down(void);
+
+/* Release right mouse button. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_mouse_right_up(void);
+
+/* Press middle mouse button. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_mouse_middle_down(void);
+
+/* Release middle mouse button. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_input_mouse_middle_up(void);
+
+/* ---- Legacy API (compatibility) ---- */
+
+typedef OzaynInputDeviceInfo ozayn_input_info_t;
+
+/* Query input device availability (legacy). */
 ozayn_result_t ozayn_input_info(ozayn_input_info_t *info);
 
 /* ================================================================

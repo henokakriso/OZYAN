@@ -19,6 +19,14 @@
 #include <ifaddrs.h>
 #include <arpa/inet.h>
 
+/* X11 headers for input abstraction */
+#ifdef OZAYN_OS_LINUX
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/extensions/XTest.h>
+#include <X11/keysym.h>
+#endif
+
 /*
  * platform_linux.c — Linux platform implementation.
  *
@@ -949,13 +957,170 @@ ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info) {
 }
 
 /* ================================================================
- * H. Input (stub)
- * ================================================================ */
+ * I. Input & Mouse Abstraction (Step 07)
+ * ================================================================
+ *
+ * Uses X11 native APIs for mouse position and button control.
+ * Coordinate convention: (0,0) = top-left of primary display.
+ * X increases rightward, Y increases downward.
+ */
 
+static OzaynInputState _ozayn_input = {0};
+
+/* X11 display connection for input operations */
+static Display *_ozayn_input_display = NULL;
+
+static int _ozayn_input_check_x11(void) {
+    if (!getenv("DISPLAY") && !getenv("WAYLAND_DISPLAY")) {
+        return 0;
+    }
+    /* Try to open X display */
+    Display *d = XOpenDisplay(NULL);
+    if (d) {
+        XCloseDisplay(d);
+        return 1;
+    }
+    return 0;
+}
+
+ozayn_result_t ozayn_input_init(void) {
+    if (_ozayn_input.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_input, 0, sizeof(OzaynInputState));
+
+    /* Check if X11 is available */
+    if (_ozayn_input_check_x11()) {
+        _ozayn_input_display = XOpenDisplay(NULL);
+        if (_ozayn_input_display) {
+            _ozayn_input.available = 1;
+            _ozayn_input.device_info.has_mouse = 1;
+            _ozayn_input.device_info.has_keyboard = 1;
+        }
+    }
+
+    _ozayn_input.initialized = 1;
+
+    LOG_INFO("INPUT", "Input subsystem initialized (available=%s)",
+             _ozayn_input.available ? "yes" : "no");
+
+    return OZAYN_OK;
+}
+
+void ozayn_input_shutdown(void) {
+    if (!_ozayn_input.initialized) return;
+
+    if (_ozayn_input_display) {
+        XCloseDisplay(_ozayn_input_display);
+        _ozayn_input_display = NULL;
+    }
+
+    memset(&_ozayn_input, 0, sizeof(OzaynInputState));
+    LOG_INFO("INPUT", "Input subsystem shut down");
+}
+
+int ozayn_input_is_available(void) {
+    return _ozayn_input.available;
+}
+
+ozayn_result_t ozayn_input_device_info(OzaynInputDeviceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_input.device_info, sizeof(OzaynInputDeviceInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_input_get_mouse_position(int32_t *x, int32_t *y) {
+    if (!x || !y) return OZAYN_ERR_NULL;
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+    if (!_ozayn_input_display) return OZAYN_ERR;
+
+    Window root, child;
+    int root_x, root_y;
+    unsigned int mask;
+
+    if (XQueryPointer(_ozayn_input_display, DefaultRootWindow(_ozayn_input_display),
+                      &root, &child, &root_x, &root_y, &root_x, &root_y, &mask)) {
+        *x = (int32_t)root_x;
+        *y = (int32_t)root_y;
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_input_get_mouse_state(OzaynMouseState *state) {
+    if (!state) return OZAYN_ERR_NULL;
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+    if (!_ozayn_input_display) return OZAYN_ERR;
+
+    memset(state, 0, sizeof(OzaynMouseState));
+
+    Window root, child;
+    int root_x, root_y;
+    unsigned int mask;
+
+    if (XQueryPointer(_ozayn_input_display, DefaultRootWindow(_ozayn_input_display),
+                      &root, &child, &root_x, &root_y, &root_x, &root_y, &mask)) {
+        state->x = (int32_t)root_x;
+        state->y = (int32_t)root_y;
+        state->left_button = (mask & Button1Mask) ? 1 : 0;
+        state->middle_button = (mask & Button2Mask) ? 1 : 0;
+        state->right_button = (mask & Button3Mask) ? 1 : 0;
+        state->available = 1;
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_input_move_mouse(int32_t x, int32_t y) {
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+    if (!_ozayn_input_display) return OZAYN_ERR;
+
+    XWarpPointer(_ozayn_input_display, None, DefaultRootWindow(_ozayn_input_display),
+                 0, 0, 0, 0, (int)x, (int)y);
+    XFlush(_ozayn_input_display);
+    return OZAYN_OK;
+}
+
+static ozayn_result_t _ozayn_input_button_event(unsigned int button, int press) {
+    if (!_ozayn_input.initialized) return OZAYN_ERR;
+    if (!_ozayn_input_display) return OZAYN_ERR;
+
+    XTestFakeButtonEvent(_ozayn_input_display, button, press, CurrentTime);
+    XFlush(_ozayn_input_display);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_input_mouse_left_down(void) {
+    return _ozayn_input_button_event(Button1, True);
+}
+
+ozayn_result_t ozayn_input_mouse_left_up(void) {
+    return _ozayn_input_button_event(Button1, False);
+}
+
+ozayn_result_t ozayn_input_mouse_right_down(void) {
+    return _ozayn_input_button_event(Button3, True);
+}
+
+ozayn_result_t ozayn_input_mouse_right_up(void) {
+    return _ozayn_input_button_event(Button3, False);
+}
+
+ozayn_result_t ozayn_input_mouse_middle_down(void) {
+    return _ozayn_input_button_event(Button2, True);
+}
+
+ozayn_result_t ozayn_input_mouse_middle_up(void) {
+    return _ozayn_input_button_event(Button2, False);
+}
+
+/* Legacy API compatibility */
 ozayn_result_t ozayn_input_info(ozayn_input_info_t *info) {
     if (!info) return OZAYN_ERR_NULL;
     memset(info, 0, sizeof(ozayn_input_info_t));
-    /* TODO: Section 07 — enumerate input devices */
     info->has_keyboard = 1;
     info->has_mouse = 1;
     info->has_touch = 0;

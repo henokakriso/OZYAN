@@ -244,6 +244,126 @@ ozayn_result_t ozayn_window_refresh(void);
 - Window count returns 0 in headless environments
 - No crashes or errors in headless mode
 
+## Step 07 — Input & Mouse Abstraction
+
+Cross-platform input abstraction for mouse/pointer state and control.
+
+### Coordinate Convention
+
+```
+(0,0) = top-left of primary display
+X increases rightward
+Y increases downward
+Negative coordinates possible with multi-display setups
+```
+
+Coordinates match Step 05 Display Abstraction convention.
+
+### Public API
+
+```c
+/* Input Lifecycle */
+ozayn_result_t ozayn_input_init(void);
+void           ozayn_input_shutdown(void);
+int            ozayn_input_is_available(void);
+
+/* Device Info */
+ozayn_result_t ozayn_input_device_info(OzaynInputDeviceInfo *info);
+
+/* Mouse Position */
+ozayn_result_t ozayn_input_get_mouse_position(int32_t *x, int32_t *y);
+ozayn_result_t ozayn_input_get_mouse_state(OzaynMouseState *state);
+ozayn_result_t ozayn_input_move_mouse(int32_t x, int32_t y);
+
+/* Mouse Buttons */
+ozayn_result_t ozayn_input_mouse_left_down(void);
+ozayn_result_t ozayn_input_mouse_left_up(void);
+ozayn_result_t ozayn_input_mouse_right_down(void);
+ozayn_result_t ozayn_input_mouse_right_up(void);
+ozayn_result_t ozayn_input_mouse_middle_down(void);
+ozayn_result_t ozayn_input_mouse_middle_up(void);
+```
+
+### Data Structures
+
+```c
+typedef struct {
+    int32_t  x;            /* pointer X position */
+    int32_t  y;            /* pointer Y position */
+    int      left_button;  /* 1 if pressed, 0 otherwise */
+    int      middle_button;
+    int      right_button;
+    int      available;    /* 1 if mouse input is available */
+} OzaynMouseState;
+
+typedef struct {
+    int has_keyboard;
+    int has_mouse;
+    int has_touch;
+    int has_microphone;
+    int has_camera;
+} OzaynInputDeviceInfo;
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_input_shutdown()` is idempotent and safe to call multiple times
+- Works in headless environments (returns available=0)
+- No keylogging, no hidden input recording, no stealth surveillance
+- No credential harvesting, no persistence, no privilege escalation
+- Button operations do not simulate clicks on arbitrary applications
+
+### Platform Implementations
+
+- Linux: X11 native APIs (XQueryPointer, XWarpPointer, XTestFakeButtonEvent)
+- macOS: Core Graphics APIs (CGEventCreate, CGEventPost) with accessibility permission check
+- Windows: Win32 APIs (GetCursorPos, SetCursorPos, SendInput)
+
+### Linux Limitations
+
+- Requires X11 display server (or `DISPLAY`/`WAYLAND_DISPLAY` environment variable)
+- Requires `libX11` and `libXtst` libraries
+- Headless environments report unavailable
+- Wayland: Limited support — coordinate system may differ
+
+### macOS Permissions
+
+- Accessibility permissions required for mouse movement/control
+- If permission is denied, subsystem reports unavailable
+- Use `AXIsProcessTrusted()` to check permission status
+
+### Windows Behavior
+
+- Mouse input always available on Windows
+- Uses `GetCursorPos`/`SetCursorPos` for position
+- Uses `SendInput` for button events
+- Uses `GetAsyncKeyState` for button state queries
+
+### Headless Behavior
+
+- Input subsystem gracefully reports unavailable when no display/input session exists
+- No crashes or errors in headless mode
+- Button operations return OZAYN_ERR when unavailable
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Device info query
+- Mouse position retrieval
+- Mouse state retrieval (position + button states)
+- Mouse movement (safe test coordinates with position restore)
+- Button API availability (no actual clicks in tests)
+- NULL parameter handling
+- Pre-init error handling
+- Legacy API compatibility
+
 ## Directory Structure
 
 ```
@@ -314,6 +434,17 @@ make test
 - Window shutdown (basic + idempotent + before init)
 - Window enumeration (query all windows)
 
+### Step 07 Tests (23 tests)
+- Input init/shutdown (basic + idempotent)
+- Input availability (before/after init)
+- Input device info (after init, null, before init)
+- Mouse position (returns result, null, before init)
+- Mouse state (returns result, null, before init, button fields)
+- Mouse movement (returns result, before init)
+- Mouse buttons (before init, after init)
+- Input shutdown (basic + idempotent + before init)
+- Legacy API (returns result, null)
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -322,4 +453,5 @@ make test
 - [x] Step 04: Process Management Abstraction
 - [x] Step 05: Display Abstraction
 - [x] Step 06: Window Management
-- [ ] Steps 07-35: (future)
+- [x] Step 07: Input & Mouse Abstraction
+- [ ] Steps 08-35: (future)
