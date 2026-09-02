@@ -1546,6 +1546,76 @@ ozayn_result_t ozayn_application_open_url(const char *url) {
 }
 
 /* ================================================================
+ * S. System Permissions & Capability Access Abstraction (Step 19)
+ * ================================================================
+ *
+ * Windows stub — requires Win32 capability APIs for full implementation.
+ * Reports UNKNOWN for most capabilities without proper API access.
+ */
+
+static int _ozayn_permissions_initialized = 0;
+
+ozayn_result_t ozayn_permissions_init(void) {
+    if (_ozayn_permissions_initialized) return OZAYN_OK;
+    _ozayn_permissions_initialized = 1;
+    LOG_INFO("PERM", "Permissions subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_permissions_shutdown(void) {
+    if (!_ozayn_permissions_initialized) return;
+    _ozayn_permissions_initialized = 0;
+    LOG_INFO("PERM", "Permissions subsystem shut down");
+}
+
+int ozayn_permissions_is_available(void) {
+    return _ozayn_permissions_initialized;
+}
+
+OzaynPermissionState ozayn_permissions_get_state(OzaynCapability capability) {
+    if (!_ozayn_permissions_initialized) return OZAYN_PERMISSION_UNKNOWN;
+
+    switch (capability) {
+        case OZAYN_CAP_FILESYSTEM:
+            return OZAYN_PERMISSION_AVAILABLE;
+        case OZAYN_CAP_NETWORK:
+            return OZAYN_PERMISSION_AVAILABLE;
+        case OZAYN_CAP_CAMERA:
+        case OZAYN_CAP_MICROPHONE:
+        case OZAYN_CAP_NOTIFICATIONS:
+        case OZAYN_CAP_ACCESSIBILITY:
+            return OZAYN_PERMISSION_UNKNOWN;
+        default:
+            return OZAYN_PERMISSION_UNKNOWN;
+    }
+}
+
+const char *ozayn_capability_get_name(OzaynCapability capability) {
+    switch (capability) {
+        case OZAYN_CAP_UNKNOWN:        return "Unknown";
+        case OZAYN_CAP_CAMERA:         return "Camera";
+        case OZAYN_CAP_MICROPHONE:     return "Microphone";
+        case OZAYN_CAP_NOTIFICATIONS:  return "Notifications";
+        case OZAYN_CAP_ACCESSIBILITY:  return "Accessibility";
+        case OZAYN_CAP_FILESYSTEM:     return "Filesystem";
+        case OZAYN_CAP_NETWORK:        return "Network";
+        default:                       return "Invalid";
+    }
+}
+
+const char *ozayn_permission_state_name(OzaynPermissionState state) {
+    switch (state) {
+        case OZAYN_PERMISSION_UNKNOWN:     return "Unknown";
+        case OZAYN_PERMISSION_AVAILABLE:   return "Available";
+        case OZAYN_PERMISSION_GRANTED:     return "Granted";
+        case OZAYN_PERMISSION_DENIED:      return "Denied";
+        case OZAYN_PERMISSION_RESTRICTED:  return "Restricted";
+        case OZAYN_PERMISSION_UNAVAILABLE: return "Unavailable";
+        default:                           return "Invalid";
+    }
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

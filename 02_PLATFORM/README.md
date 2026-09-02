@@ -1688,6 +1688,87 @@ Tests verify:
 - Default browser (null, zero size, before init, valid)
 - URL opening (null, empty, before init, invalid scheme, no scheme, valid, ftp, mailto, oversized)
 
+## Step 19 — System Permissions & Capability Access Abstraction
+
+Cross-platform capability/permission inspection. Read-only — no permission modification, no bypass, no elevation. Determines whether OS capabilities are available, granted, denied, restricted, or unknown.
+
+### Permissions Lifecycle
+
+```
+ozayn_permissions_init()
+        ↓
+query capabilities
+        ↓
+ozayn_permissions_shutdown()
+```
+
+### Public API
+
+```c
+/* Permissions Lifecycle */
+ozayn_result_t ozayn_permissions_init(void);
+void           ozayn_permissions_shutdown(void);
+
+/* Permission Queries */
+int                  ozayn_permissions_is_available(void);
+OzaynPermissionState ozayn_permissions_get_state(OzaynCapability capability);
+
+/* Name Helpers */
+const char *ozayn_capability_get_name(OzaynCapability capability);
+const char *ozayn_permission_state_name(OzaynPermissionState state);
+```
+
+### Capability Types
+
+```c
+OZAYN_CAP_UNKNOWN        — Unknown capability
+OZAYN_CAP_CAMERA         — Camera/video capture
+OZAYN_CAP_MICROPHONE     — Audio capture
+OZAYN_CAP_NOTIFICATIONS  — Desktop notifications
+OZAYN_CAP_ACCESSIBILITY  — OS accessibility features
+OZAYN_CAP_FILESYSTEM     — Basic filesystem access
+OZAYN_CAP_NETWORK        — Network connectivity
+```
+
+### Permission States
+
+```c
+OZAYN_PERMISSION_UNKNOWN     — Cannot determine
+OZAYN_PERMISSION_AVAILABLE   — Capability present
+OZAYN_PERMISSION_GRANTED     — Permission granted
+OZAYN_PERMISSION_DENIED      — Permission denied
+OZAYN_PERMISSION_RESTRICTED  — Restricted by OS
+OZAYN_PERMISSION_UNAVAILABLE — Not available
+```
+
+### Safety
+
+- Read-only inspection — no permission modification
+- No bypass of OS security controls
+- No privilege elevation
+- No secret/credential access
+- NULL parameters handled safely
+
+### Platform Implementations
+
+- Linux: V4L2 camera check, ALSA mic check, notify-send check, X11 extension check, filesystem/network access
+- macOS: Basic filesystem/network checks (privacy APIs require framework)
+- Windows: Basic filesystem/network checks (WinRT APIs require framework)
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Capability names (all valid + invalid)
+- Permission state names (all valid + invalid)
+- Capability queries (camera, microphone, notifications, accessibility, filesystem, network)
+- Invalid input handling
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1708,4 +1789,5 @@ Tests verify:
 - [x] Step 16: Environment & User Session Abstraction
 - [x] Step 17: System Time & Date Abstraction
 - [x] Step 18: Application Launch & Discovery Abstraction
-- [ ] Steps 19-35: (future)
+- [x] Step 19: System Permissions & Capability Access Abstraction
+- [ ] Steps 20-35: (future)

@@ -34,6 +34,7 @@
  *   P. Environment & User Session Abstraction (Step 16)
  *   Q. System Time & Date Abstraction (Step 17)
  *   R. Application Launch & Discovery Abstraction (Step 18)
+ *   S. System Permissions & Capability Access Abstraction (Step 19)
  */
 
 /* ================================================================
@@ -1115,6 +1116,54 @@ ozayn_result_t ozayn_application_get_default_browser(char *buffer, size_t buffer
 /* ---- URL Opening ---- */
 
 ozayn_result_t ozayn_application_open_url(const char *url);
+
+/* ================================================================
+ * S. System Permissions & Capability Access Abstraction (Step 19)
+ * ================================================================
+ *
+ * Cross-platform capability/permission inspection.
+ * Read-only — no permission modification, no bypass, no elevation.
+ * Determines whether OS capabilities are available, granted, denied,
+ * restricted, or unknown.
+ */
+
+/* ---- Capability Types ---- */
+
+typedef enum {
+    OZAYN_CAP_UNKNOWN = 0,
+    OZAYN_CAP_CAMERA = 1,
+    OZAYN_CAP_MICROPHONE = 2,
+    OZAYN_CAP_NOTIFICATIONS = 3,
+    OZAYN_CAP_ACCESSIBILITY = 4,
+    OZAYN_CAP_FILESYSTEM = 5,
+    OZAYN_CAP_NETWORK = 6
+} OzaynCapability;
+
+/* ---- Permission States ---- */
+
+typedef enum {
+    OZAYN_PERMISSION_UNKNOWN = 0,
+    OZAYN_PERMISSION_AVAILABLE,
+    OZAYN_PERMISSION_GRANTED,
+    OZAYN_PERMISSION_DENIED,
+    OZAYN_PERMISSION_RESTRICTED,
+    OZAYN_PERMISSION_UNAVAILABLE
+} OzaynPermissionState;
+
+/* ---- Permissions Lifecycle ---- */
+
+ozayn_result_t ozayn_permissions_init(void);
+void           ozayn_permissions_shutdown(void);
+
+/* ---- Permission Queries ---- */
+
+int                  ozayn_permissions_is_available(void);
+OzaynPermissionState ozayn_permissions_get_state(OzaynCapability capability);
+
+/* ---- Name Helpers ---- */
+
+const char *ozayn_capability_get_name(OzaynCapability capability);
+const char *ozayn_permission_state_name(OzaynPermissionState state);
 
 /* ================================================================
  * Platform Lifecycle

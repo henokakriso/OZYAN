@@ -3037,6 +3037,198 @@ ozayn_result_t ozayn_application_open_url(const char *url) {
 }
 
 /* ================================================================
+ * S. System Permissions & Capability Access Abstraction (Step 19)
+ * ================================================================
+ *
+ * Cross-platform capability/permission inspection.
+ * Read-only — no permission modification, no bypass, no elevation.
+ * Linux: checks device files, command availability, X11 extensions.
+ */
+
+static int _ozayn_permissions_initialized = 0;
+
+/* Internal helper: check if V4L2 camera devices exist */
+static int _ozayn_check_camera(void) {
+    DIR *dir = opendir("/dev");
+    if (!dir) return 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strncmp(entry->d_name, "video", 5) == 0) {
+            closedir(dir);
+            return 1;
+        }
+    }
+    closedir(dir);
+    return 0;
+}
+
+/* Internal helper: check if ALSA capture devices exist */
+static int _ozayn_check_microphone(void) {
+    void **hints = NULL;
+    int err = snd_device_name_hint(-1, "pcm", &hints);
+    if (err < 0 || !hints) return 0;
+
+    int found = 0;
+    for (int i = 0; hints[i] && !found; i++) {
+        char *name = snd_device_name_get_hint(hints[i], "NAME");
+        char *desc = snd_device_name_get_hint(hints[i], "DESC");
+        char *io = snd_device_name_get_hint(hints[i], "IOID");
+
+        /* Check if it's a capture device (no IOID or IOID=INPUT) */
+        int is_capture = (!io || strstr(io, "INPUT"));
+
+        if (is_capture && name && strstr(name, "hw:") != NULL) {
+            /* Try to open it to confirm it works */
+            snd_pcm_t *pcm;
+            if (snd_pcm_open(&pcm, name, SND_PCM_STREAM_CAPTURE, 0) == 0) {
+                snd_pcm_close(pcm);
+                found = 1;
+            }
+        }
+
+        free(name);
+        free(desc);
+        free(io);
+    }
+
+    snd_device_name_free_hint(hints);
+    return found;
+}
+
+/* Internal helper: check if notification tool is available */
+static int _ozayn_check_notifications(void) {
+    /* Check for notify-send in PATH */
+    const char *path_env = getenv("PATH");
+    if (!path_env) return 0;
+
+    char path_buf[4096];
+    size_t path_len = strlen(path_env);
+    if (path_len >= sizeof(path_buf)) path_len = sizeof(path_buf) - 1;
+    memcpy(path_buf, path_env, path_len);
+    path_buf[path_len] = '\0';
+
+    char *saveptr = NULL;
+    char *dir = strtok_r(path_buf, ":", &saveptr);
+    while (dir) {
+        if (*dir) {
+            char fullpath[4096];
+            snprintf(fullpath, sizeof(fullpath), "%s/notify-send", dir);
+            struct stat st;
+            if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode) &&
+                (st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
+                return 1;
+            }
+        }
+        dir = strtok_r(NULL, ":", &saveptr);
+    }
+    return 0;
+}
+
+/* Internal helper: check X11 accessibility extensions */
+static int _ozayn_check_accessibility(void) {
+#ifdef OZAYN_OS_LINUX
+    const char *display_env = getenv("DISPLAY");
+    if (!display_env || !*display_env) return 0;
+
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) return 0;
+
+    int has_xtest = 0;
+    int dummy1, dummy2;
+    has_xtest = XQueryExtension(dpy, "TEST", &dummy1, &dummy2, &dummy2);
+
+    XCloseDisplay(dpy);
+    return has_xtest;
+#else
+    return 0;
+#endif
+}
+
+/* Internal helper: check filesystem basic access */
+static int _ozayn_check_filesystem(void) {
+    /* Check if we can access /tmp */
+    return (access("/tmp", R_OK | W_OK) == 0);
+}
+
+/* Internal helper: check network interfaces */
+static int _ozayn_check_network(void) {
+    struct ifaddrs *ifaddr;
+    if (getifaddrs(&ifaddr) == -1) return 0;
+
+    int found = 0;
+    for (struct ifaddrs *ifa = ifaddr; ifa != NULL && !found; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) continue;
+        if (ifa->ifa_flags & IFF_UP) found = 1;
+    }
+
+    freeifaddrs(ifaddr);
+    return found;
+}
+
+ozayn_result_t ozayn_permissions_init(void) {
+    if (_ozayn_permissions_initialized) return OZAYN_OK;
+    _ozayn_permissions_initialized = 1;
+    LOG_INFO("PERM", "Permissions subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_permissions_shutdown(void) {
+    if (!_ozayn_permissions_initialized) return;
+    _ozayn_permissions_initialized = 0;
+    LOG_INFO("PERM", "Permissions subsystem shut down");
+}
+
+int ozayn_permissions_is_available(void) {
+    return _ozayn_permissions_initialized;
+}
+
+OzaynPermissionState ozayn_permissions_get_state(OzaynCapability capability) {
+    if (!_ozayn_permissions_initialized) return OZAYN_PERMISSION_UNKNOWN;
+
+    switch (capability) {
+        case OZAYN_CAP_CAMERA:
+            return _ozayn_check_camera() ? OZAYN_PERMISSION_AVAILABLE : OZAYN_PERMISSION_UNAVAILABLE;
+        case OZAYN_CAP_MICROPHONE:
+            return _ozayn_check_microphone() ? OZAYN_PERMISSION_AVAILABLE : OZAYN_PERMISSION_UNAVAILABLE;
+        case OZAYN_CAP_NOTIFICATIONS:
+            return _ozayn_check_notifications() ? OZAYN_PERMISSION_AVAILABLE : OZAYN_PERMISSION_UNAVAILABLE;
+        case OZAYN_CAP_ACCESSIBILITY:
+            return _ozayn_check_accessibility() ? OZAYN_PERMISSION_AVAILABLE : OZAYN_PERMISSION_UNAVAILABLE;
+        case OZAYN_CAP_FILESYSTEM:
+            return _ozayn_check_filesystem() ? OZAYN_PERMISSION_AVAILABLE : OZAYN_PERMISSION_UNAVAILABLE;
+        case OZAYN_CAP_NETWORK:
+            return _ozayn_check_network() ? OZAYN_PERMISSION_AVAILABLE : OZAYN_PERMISSION_UNAVAILABLE;
+        default:
+            return OZAYN_PERMISSION_UNKNOWN;
+    }
+}
+
+const char *ozayn_capability_get_name(OzaynCapability capability) {
+    switch (capability) {
+        case OZAYN_CAP_UNKNOWN:        return "Unknown";
+        case OZAYN_CAP_CAMERA:         return "Camera";
+        case OZAYN_CAP_MICROPHONE:     return "Microphone";
+        case OZAYN_CAP_NOTIFICATIONS:  return "Notifications";
+        case OZAYN_CAP_ACCESSIBILITY:  return "Accessibility";
+        case OZAYN_CAP_FILESYSTEM:     return "Filesystem";
+        case OZAYN_CAP_NETWORK:        return "Network";
+        default:                       return "Invalid";
+    }
+}
+
+const char *ozayn_permission_state_name(OzaynPermissionState state) {
+    switch (state) {
+        case OZAYN_PERMISSION_UNKNOWN:     return "Unknown";
+        case OZAYN_PERMISSION_AVAILABLE:   return "Available";
+        case OZAYN_PERMISSION_GRANTED:     return "Granted";
+        case OZAYN_PERMISSION_DENIED:      return "Denied";
+        case OZAYN_PERMISSION_RESTRICTED:  return "Restricted";
+        case OZAYN_PERMISSION_UNAVAILABLE: return "Unavailable";
+        default:                           return "Invalid";
+    }
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *
