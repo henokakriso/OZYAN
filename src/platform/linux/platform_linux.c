@@ -34,6 +34,11 @@
 #include <sys/mman.h>
 #endif
 
+/* ALSA headers for microphone abstraction */
+#ifdef OZAYN_OS_LINUX
+#include <alsa/asoundlib.h>
+#endif
+
 /*
  * platform_linux.c — Linux platform implementation.
  *
@@ -1304,15 +1309,302 @@ void ozayn_camera_frame_release(OzaynCameraFrame *frame) {
 }
 
 /* ================================================================
- * G. Audio (stub)
- * ================================================================ */
+ * H. Microphone Device Abstraction (Step 10)
+ * ================================================================
+ *
+ * Uses ALSA for microphone enumeration and PCM capture.
+ * Handles missing devices, permission errors, and headless systems.
+ */
 
-ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info) {
-    if (!info) return OZAYN_ERR_NULL;
-    memset(info, 0, sizeof(ozayn_audio_info_t));
-    /* TODO: Section 06 — enumerate ALSA/PulseAudio devices */
-    info->available = 0;
+static OzaynMicrophoneState _ozayn_mic = {0};
+static snd_pcm_t *_ozayn_mic_handle = NULL;
+static unsigned int _ozayn_mic_open_index = 0;
+static OzaynMicrophoneInfo _ozayn_mic_infos[OZAYN_MAX_MICROPHONES];
+
+static void _ozayn_mic_enumerate(void) {
+    _ozayn_mic.count = 0;
+    void **hints = NULL;
+
+    if (snd_device_name_hint(-1, "pcm", &hints) < 0 || !hints) {
+        return;
+    }
+
+    for (unsigned int i = 0; hints[i] && _ozayn_mic.count < OZAYN_MAX_MICROPHONES; i++) {
+        char *name = snd_device_name_get_hint(hints[i], "NAME");
+        char *desc = snd_device_name_get_hint(hints[i], "DESC");
+        char *io = snd_device_name_get_hint(hints[i], "IO");
+
+        /* Only consider capture devices */
+        if (!io || !strstr(io, "INPUT")) {
+            free(name);
+            free(desc);
+            free(io);
+            continue;
+        }
+
+        /* Try to open the device to verify it works */
+        snd_pcm_t *test_handle = NULL;
+        int open_result = snd_pcm_open(&test_handle, name, SND_PCM_STREAM_CAPTURE, SND_PCM_NONBLOCK);
+
+        OzaynMicrophoneInfo *info = &_ozayn_mic_infos[_ozayn_mic.count];
+        memset(info, 0, sizeof(OzaynMicrophoneInfo));
+        info->index = (int)_ozayn_mic.count;
+        info->available = (open_result == 0) ? 1 : 0;
+
+        /* Device ID */
+        snprintf(info->id, OZAYN_MAX_MIC_ID, "%s", name ? name : "unknown");
+
+        /* Device name */
+        if (desc) {
+            /* desc format is often "name (direction)" — take the first part */
+            strncpy(info->name, desc, OZAYN_MAX_MIC_NAME - 1);
+        } else if (name) {
+            strncpy(info->name, name, OZAYN_MAX_MIC_NAME - 1);
+        } else {
+            snprintf(info->name, OZAYN_MAX_MIC_NAME, "Microphone %u", _ozayn_mic.count);
+        }
+
+        /* Query channels and sample rate if device opened successfully */
+        if (open_result == 0 && test_handle) {
+            snd_pcm_hw_params_t *hw_params;
+            snd_pcm_hw_params_alloca(&hw_params);
+            if (snd_pcm_hw_params_any(test_handle, hw_params) == 0) {
+                unsigned int channels = 0;
+                if (snd_pcm_hw_params_get_channels(hw_params, &channels) == 0) {
+                    info->channels = (int)channels;
+                }
+                unsigned int rate = 0;
+                if (snd_pcm_hw_params_get_rate(hw_params, &rate, NULL) == 0) {
+                    info->sample_rate = (int)rate;
+                }
+            }
+            snd_pcm_close(test_handle);
+        } else {
+            /* Safe defaults */
+            info->channels = 1;
+            info->sample_rate = 44100;
+        }
+
+        free(name);
+        free(desc);
+        free(io);
+
+        _ozayn_mic.count++;
+    }
+
+    snd_device_name_free_hint(hints);
+}
+
+ozayn_result_t ozayn_microphone_init(void) {
+    if (_ozayn_mic.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_mic, 0, sizeof(OzaynMicrophoneState));
+    memset(_ozayn_mic_infos, 0, sizeof(_ozayn_mic_infos));
+    _ozayn_mic_handle = NULL;
+
+    _ozayn_mic_enumerate();
+    _ozayn_mic.available = (_ozayn_mic.count > 0) ? 1 : 0;
+    _ozayn_mic.initialized = 1;
+
+    LOG_INFO("MICROPHONE", "Microphone subsystem initialized (count=%u, available=%s)",
+             _ozayn_mic.count, _ozayn_mic.available ? "yes" : "no");
+
     return OZAYN_OK;
+}
+
+void ozayn_microphone_shutdown(void) {
+    if (!_ozayn_mic.initialized) return;
+
+    if (_ozayn_mic.open) {
+        ozayn_microphone_stop();
+        ozayn_microphone_close();
+    }
+
+    memset(&_ozayn_mic, 0, sizeof(OzaynMicrophoneState));
+    _ozayn_mic_handle = NULL;
+    LOG_INFO("MICROPHONE", "Microphone subsystem shut down");
+}
+
+int ozayn_microphone_is_available(void) {
+    return _ozayn_mic.available;
+}
+
+unsigned int ozayn_microphone_get_count(void) {
+    if (!_ozayn_mic.initialized) return 0;
+    return _ozayn_mic.count;
+}
+
+ozayn_result_t ozayn_microphone_get_info(unsigned int index, OzaynMicrophoneInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_mic.count) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_mic_infos[index], sizeof(OzaynMicrophoneInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_microphone_open(unsigned int index) {
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    if (_ozayn_mic.open) return OZAYN_ERR_STATE;
+    if (index >= _ozayn_mic.count) return OZAYN_ERR;
+
+    const char *dev_name = _ozayn_mic_infos[index].id;
+    int err = snd_pcm_open(&_ozayn_mic_handle, dev_name, SND_PCM_STREAM_CAPTURE, SND_PCM_NONBLOCK);
+    if (err < 0) {
+        LOG_WARN("MICROPHONE", "Failed to open %s: %s", dev_name, snd_strerror(err));
+        return OZAYN_ERR;
+    }
+
+    /* Configure hardware params */
+    snd_pcm_hw_params_t *hw_params;
+    snd_pcm_hw_params_alloca(&hw_params);
+    snd_pcm_hw_params_any(_ozayn_mic_handle, hw_params);
+
+    /* Set access type */
+    snd_pcm_hw_params_set_access(_ozayn_mic_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+
+    /* Set format: signed 16-bit little-endian */
+    snd_pcm_hw_params_set_format(_ozayn_mic_handle, hw_params, SND_PCM_FORMAT_S16_LE);
+
+    /* Set channels */
+    unsigned int channels = (unsigned int)_ozayn_mic_infos[index].channels;
+    if (channels == 0) channels = 1;
+    snd_pcm_hw_params_set_channels(_ozayn_mic_handle, hw_params, channels);
+
+    /* Set sample rate */
+    unsigned int rate = (unsigned int)_ozayn_mic_infos[index].sample_rate;
+    if (rate == 0) rate = 44100;
+    snd_pcm_hw_params_set_rate_near(_ozayn_mic_handle, hw_params, &rate, NULL);
+
+    err = snd_pcm_hw_params(_ozayn_mic_handle, hw_params);
+    if (err < 0) {
+        LOG_WARN("MICROPHONE", "Failed to set hw params: %s", snd_strerror(err));
+        snd_pcm_close(_ozayn_mic_handle);
+        _ozayn_mic_handle = NULL;
+        return OZAYN_ERR;
+    }
+
+    _ozayn_mic_open_index = index;
+    _ozayn_mic.open = 1;
+
+    LOG_INFO("MICROPHONE", "Microphone opened: %s", _ozayn_mic_infos[index].name);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_microphone_close(void) {
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    if (!_ozayn_mic.open) return OZAYN_ERR_STATE;
+
+    if (_ozayn_mic.streaming) {
+        ozayn_microphone_stop();
+    }
+
+    if (_ozayn_mic_handle) {
+        snd_pcm_close(_ozayn_mic_handle);
+        _ozayn_mic_handle = NULL;
+    }
+
+    _ozayn_mic.open = 0;
+    _ozayn_mic_open_index = 0;
+
+    LOG_INFO("MICROPHONE", "Microphone closed");
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_microphone_start(void) {
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    if (!_ozayn_mic.open) return OZAYN_ERR_STATE;
+    if (_ozayn_mic.streaming) return OZAYN_ERR_STATE;
+    if (!_ozayn_mic_handle) return OZAYN_ERR;
+
+    /* Prepare the PCM device */
+    int err = snd_pcm_prepare(_ozayn_mic_handle);
+    if (err < 0) {
+        LOG_WARN("MICROPHONE", "snd_pcm_prepare failed: %s", snd_strerror(err));
+        return OZAYN_ERR;
+    }
+
+    _ozayn_mic.streaming = 1;
+    LOG_INFO("MICROPHONE", "Capture started");
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_microphone_stop(void) {
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    if (!_ozayn_mic.streaming) return OZAYN_ERR_STATE;
+
+    if (_ozayn_mic_handle) {
+        snd_pcm_drop(_ozayn_mic_handle);
+    }
+
+    _ozayn_mic.streaming = 0;
+    LOG_INFO("MICROPHONE", "Capture stopped");
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_microphone_capture(OzaynAudioBuffer *buffer) {
+    if (!buffer) return OZAYN_ERR_NULL;
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    if (!_ozayn_mic.open || !_ozayn_mic.streaming) return OZAYN_ERR_STATE;
+    if (!_ozayn_mic_handle) return OZAYN_ERR;
+
+    memset(buffer, 0, sizeof(OzaynAudioBuffer));
+
+    /* Get current hw params to know channels and rate */
+    snd_pcm_hw_params_t *hw_params;
+    snd_pcm_hw_params_alloca(&hw_params);
+    snd_pcm_hw_params_any(_ozayn_mic_handle, hw_params);
+
+    unsigned int channels = 1;
+    unsigned int rate = 44100;
+    snd_pcm_hw_params_get_channels(hw_params, &channels);
+    snd_pcm_hw_params_get_rate(hw_params, &rate, NULL);
+
+    buffer->sample_rate = rate;
+    buffer->channels = channels;
+    buffer->format = OZAYN_AUDIO_FORMAT_S16;
+    buffer->frame_count = 1024;
+
+    /* Allocate buffer: frames * channels * 2 bytes (S16) */
+    size_t buf_size = buffer->frame_count * channels * sizeof(int16_t);
+    buffer->data = (unsigned char *)malloc(buf_size);
+    if (!buffer->data) return OZAYN_ERR;
+
+    /* Read interleaved samples */
+    snd_pcm_sframes_t frames = snd_pcm_readi(_ozayn_mic_handle, buffer->data, buffer->frame_count);
+    if (frames < 0) {
+        /* Try to recover from overrun */
+        frames = snd_pcm_recover(_ozayn_mic_handle, (int)frames, 0);
+        if (frames < 0) {
+            free(buffer->data);
+            buffer->data = NULL;
+            return OZAYN_ERR;
+        }
+        frames = snd_pcm_readi(_ozayn_mic_handle, buffer->data, buffer->frame_count);
+        if (frames < 0) {
+            free(buffer->data);
+            buffer->data = NULL;
+            return OZAYN_ERR;
+        }
+    }
+
+    buffer->frame_count = (size_t)frames;
+    buffer->data_size = frames * channels * sizeof(int16_t);
+
+    return OZAYN_OK;
+}
+
+void ozayn_microphone_buffer_release(OzaynAudioBuffer *buffer) {
+    if (!buffer) return;
+    if (buffer->data) {
+        free(buffer->data);
+    }
+    buffer->data = NULL;
+    buffer->data_size = 0;
+    buffer->frame_count = 0;
+    buffer->sample_rate = 0;
+    buffer->channels = 0;
+    buffer->format = OZAYN_AUDIO_FORMAT_UNKNOWN;
 }
 
 /* ================================================================

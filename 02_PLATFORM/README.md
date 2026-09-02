@@ -641,6 +641,146 @@ Tests verify:
 - Frame release (null, clears fields)
 - Pixel format constants
 
+## Step 10 — Microphone Device Abstraction
+
+Cross-platform microphone enumeration, configuration, and PCM audio capture.
+
+### Microphone Lifecycle
+
+```
+ozayn_microphone_init()
+        ↓
+enumerate devices
+        ↓
+ozayn_microphone_open(index)
+        ↓
+ozayn_microphone_start()
+        ↓
+capture audio
+        ↓
+ozayn_microphone_stop()
+        ↓
+ozayn_microphone_close()
+        ↓
+ozayn_microphone_shutdown()
+```
+
+### Public API
+
+```c
+/* Microphone Lifecycle */
+ozayn_result_t ozayn_microphone_init(void);
+void           ozayn_microphone_shutdown(void);
+int            ozayn_microphone_is_available(void);
+
+/* Device Enumeration */
+unsigned int   ozayn_microphone_get_count(void);
+ozayn_result_t ozayn_microphone_get_info(unsigned int index, OzaynMicrophoneInfo *info);
+
+/* Device Control */
+ozayn_result_t ozayn_microphone_open(unsigned int index);
+ozayn_result_t ozayn_microphone_close(void);
+
+/* Capture Control */
+ozayn_result_t ozayn_microphone_start(void);
+ozayn_result_t ozayn_microphone_stop(void);
+ozayn_result_t ozayn_microphone_capture(OzaynAudioBuffer *buffer);
+
+/* Buffer Management */
+void           ozayn_microphone_buffer_release(OzaynAudioBuffer *buffer);
+```
+
+### Data Structures
+
+```c
+typedef struct {
+    int index;
+    char id[256];
+    char name[256];
+    int available;
+    int channels;
+    int sample_rate;
+} OzaynMicrophoneInfo;
+
+typedef struct {
+    unsigned int sample_rate;
+    unsigned int channels;
+    OzaynAudioFormat format;
+    size_t frame_count;
+    unsigned char *data;
+    size_t data_size;
+} OzaynAudioBuffer;
+
+typedef enum {
+    OZAYN_AUDIO_FORMAT_UNKNOWN = 0,
+    OZAYN_AUDIO_FORMAT_S16,
+    OZAYN_AUDIO_FORMAT_F32
+} OzaynAudioFormat;
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_microphone_shutdown()` is idempotent and safe to call multiple times
+- `ozayn_microphone_buffer_release()` is safe to call with NULL or already released buffers
+- Invalid lifecycle transitions are rejected (capture before open, start twice, etc.)
+- Works in headless/no-microphone environments (count=0, available=0)
+- No hidden microphone activation, no covert recording
+- Audio data never written to disk or transmitted over network
+- Microphone only accessed through explicit OZAYN operations
+
+### Platform Implementations
+
+- Linux: ALSA for device enumeration and PCM capture
+- macOS: Stub (requires Core Audio / AVFoundation + microphone privacy permissions)
+- Windows: Stub (requires WASAPI)
+
+### Linux Implementation
+
+- Enumerates capture devices via `snd_device_name_hint`
+- Opens devices with `snd_pcm_open` in non-blocking mode
+- Configures S16_LE format, channels, and sample rate
+- Uses `snd_pcm_readi` for interleaved PCM capture
+- Handles overrun recovery via `snd_pcm_recover`
+
+### Linux Limitations
+
+- Requires ALSA development libraries (`alsa-lib-dev`)
+- Requires read access to ALSA capture devices
+- Headless systems may report no microphones
+- Some devices may not support S16 format
+
+### macOS Permissions
+
+- Microphone privacy permissions required (NSMicrophoneUsageDescription)
+- If permission is denied, subsystem reports unavailable
+- Full implementation requires Core Audio (future step)
+
+### Windows Behavior
+
+- Microphone subsystem stub returns unavailable
+- Full implementation requires WASAPI (future step)
+
+### Headless Behavior
+
+- Microphone subsystem gracefully reports unavailable when no devices exist
+- Microphone count returns 0 in headless environments
+- No crashes or errors in headless mode
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Device enumeration (count before/after init, get info valid/invalid/null/before init)
+- Lifecycle transitions (open invalid index, open before init, start before open, stop before start, capture before open/null/before init, close before open/before init)
+- Buffer release (null, clears fields, empty buffer)
+- Audio format constants
+
 ## Directory Structure
 
 ```
@@ -743,6 +883,16 @@ make test
 - Camera shutdown (basic + idempotent + before init)
 - Pixel format constants
 
+### Step 10 Tests (26 tests)
+- Microphone init/shutdown (basic + idempotent)
+- Microphone availability (before/after init)
+- Microphone count (before/after init)
+- Microphone get info (valid index, invalid index, null, before init)
+- Lifecycle transitions (open invalid index, open before init, start before open, stop before start, capture before open, capture null, capture before init, close before open, close before init)
+- Buffer release (null, clears fields, empty buffer)
+- Microphone shutdown (basic + idempotent + before init)
+- Audio format constants
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -754,4 +904,5 @@ make test
 - [x] Step 07: Input & Mouse Abstraction
 - [x] Step 08: Keyboard & Input Event Abstraction
 - [x] Step 09: Camera Device Abstraction
-- [ ] Steps 10-35: (future)
+- [x] Step 10: Microphone Device Abstraction
+- [ ] Steps 11-35: (future)

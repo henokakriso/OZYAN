@@ -775,14 +775,83 @@ void ozayn_camera_frame_release(OzaynCameraFrame *frame) {
 }
 
 /* ================================================================
- * H. Audio (stub)
- * ================================================================ */
+ * H. Microphone Device Abstraction (Step 10)
+ * ================================================================
+ *
+ * Windows stub — requires WASAPI for full implementation.
+ */
 
-ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info) {
-    if (!info) return OZAYN_ERR_NULL;
-    memset(info, 0, sizeof(ozayn_audio_info_t));
-    info->available = 0;
+static OzaynMicrophoneState _ozayn_mic = {0};
+
+ozayn_result_t ozayn_microphone_init(void) {
+    if (_ozayn_mic.initialized) return OZAYN_OK;
+    memset(&_ozayn_mic, 0, sizeof(OzaynMicrophoneState));
+    /* TODO: IMMDeviceEnumerator */
+    _ozayn_mic.initialized = 1;
     return OZAYN_OK;
+}
+
+void ozayn_microphone_shutdown(void) {
+    if (!_ozayn_mic.initialized) return;
+    memset(&_ozayn_mic, 0, sizeof(OzaynMicrophoneState));
+}
+
+int ozayn_microphone_is_available(void) {
+    return _ozayn_mic.available;
+}
+
+unsigned int ozayn_microphone_get_count(void) {
+    if (!_ozayn_mic.initialized) return 0;
+    return _ozayn_mic.count;
+}
+
+ozayn_result_t ozayn_microphone_get_info(unsigned int index, OzaynMicrophoneInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_mic.count) return OZAYN_ERR;
+    memset(info, 0, sizeof(OzaynMicrophoneInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_microphone_open(unsigned int index) {
+    (void)index;
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_microphone_close(void) {
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_microphone_start(void) {
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_microphone_stop(void) {
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_microphone_capture(OzaynAudioBuffer *buffer) {
+    if (!buffer) return OZAYN_ERR_NULL;
+    if (!_ozayn_mic.initialized) return OZAYN_ERR;
+    memset(buffer, 0, sizeof(OzaynAudioBuffer));
+    return OZAYN_ERR;
+}
+
+void ozayn_microphone_buffer_release(OzaynAudioBuffer *buffer) {
+    if (!buffer) return;
+    if (buffer->data) {
+        free(buffer->data);
+    }
+    buffer->data = NULL;
+    buffer->data_size = 0;
+    buffer->frame_count = 0;
+    buffer->sample_rate = 0;
+    buffer->channels = 0;
+    buffer->format = OZAYN_AUDIO_FORMAT_UNKNOWN;
 }
 
 /* ================================================================

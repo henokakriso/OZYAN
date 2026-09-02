@@ -23,7 +23,7 @@
  *   E. Window Management (Step 06)
  *   F. Network
  *   G. Camera Device Abstraction (Step 09)
- *   H. Audio (stubs for Section 06)
+ *   H. Microphone Device Abstraction (Step 10)
  *   I. Input (Step 07)
  *   J. Keyboard & Input Event Abstraction (Step 08)
  */
@@ -455,17 +455,100 @@ ozayn_result_t ozayn_camera_set_fps(unsigned int fps);
 void ozayn_camera_frame_release(OzaynCameraFrame *frame);
 
 /* ================================================================
- * H. Audio (stubs — implemented in Section 06)
- * ================================================================ */
+ * H. Microphone Device Abstraction (Step 10)
+ * ================================================================
+ *
+ * Cross-platform microphone enumeration, configuration, and PCM audio
+ * capture. This is the hardware/device abstraction layer only — no
+ * speech recognition, voice commands, or audio processing.
+ */
+
+#define OZAYN_MAX_MICROPHONES 16
+#define OZAYN_MAX_MIC_NAME 256
+#define OZAYN_MAX_MIC_ID 256
+
+/* ---- Audio Sample Format ---- */
+
+typedef enum {
+    OZAYN_AUDIO_FORMAT_UNKNOWN = 0,
+    OZAYN_AUDIO_FORMAT_S16,      /* signed 16-bit PCM */
+    OZAYN_AUDIO_FORMAT_F32       /* 32-bit float */
+} OzaynAudioFormat;
+
+/* ---- Microphone Info ---- */
 
 typedef struct {
-    int      available;
-    uint32_t sample_rate;
-    uint32_t channels;
-} ozayn_audio_info_t;
+    int index;
+    char id[OZAYN_MAX_MIC_ID];
+    char name[OZAYN_MAX_MIC_NAME];
+    int available;
+    int channels;
+    int sample_rate;
+} OzaynMicrophoneInfo;
 
-/* Query audio info. Stub returns available=0. */
-ozayn_result_t ozayn_audio_info(ozayn_audio_info_t *info);
+/* ---- Audio Buffer ---- */
+
+typedef struct {
+    unsigned int sample_rate;
+    unsigned int channels;
+    OzaynAudioFormat format;
+    size_t frame_count;
+    unsigned char *data;
+    size_t data_size;
+} OzaynAudioBuffer;
+
+/* ---- Microphone State ---- */
+
+typedef struct {
+    int initialized;
+    int available;
+    int open;
+    int streaming;
+    unsigned int count;
+} OzaynMicrophoneState;
+
+/* ---- Microphone Lifecycle ---- */
+
+/* Initialize microphone subsystem. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_microphone_init(void);
+
+/* Shutdown microphone subsystem. Safe to call multiple times. */
+void ozayn_microphone_shutdown(void);
+
+/* Check if microphone subsystem is available. Returns 1 if available, 0 otherwise. */
+int ozayn_microphone_is_available(void);
+
+/* ---- Device Enumeration ---- */
+
+/* Get number of microphones. Returns count or 0 if unavailable. */
+unsigned int ozayn_microphone_get_count(void);
+
+/* Get microphone info by index. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_microphone_get_info(unsigned int index, OzaynMicrophoneInfo *info);
+
+/* ---- Device Control ---- */
+
+/* Open microphone by index. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_microphone_open(unsigned int index);
+
+/* Close currently open microphone. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_microphone_close(void);
+
+/* ---- Capture Control ---- */
+
+/* Start audio capture. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_microphone_start(void);
+
+/* Stop audio capture. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_microphone_stop(void);
+
+/* Capture audio samples. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_microphone_capture(OzaynAudioBuffer *buffer);
+
+/* ---- Buffer Management ---- */
+
+/* Release audio buffer data. Safe to call with NULL or already released buffers. */
+void ozayn_microphone_buffer_release(OzaynAudioBuffer *buffer);
 
 /* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
