@@ -1242,6 +1242,115 @@ ozayn_result_t ozayn_environment_get_hostname(char *buffer, size_t buffer_size) 
 }
 
 /* ================================================================
+ * Q. System Time & Date Abstraction (Step 17)
+ * ================================================================
+ *
+ * Windows stub — requires Win32 time APIs for full implementation.
+ * Uses standard C time functions with fallbacks.
+ */
+
+#include <time.h>
+#include <windows.h>
+
+static int _ozayn_time_initialized = 0;
+
+ozayn_result_t ozayn_time_init(void) {
+    if (_ozayn_time_initialized) return OZAYN_OK;
+    _ozayn_time_initialized = 1;
+    LOG_INFO("TIME", "Time subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_time_shutdown(void) {
+    if (!_ozayn_time_initialized) return;
+    _ozayn_time_initialized = 0;
+    LOG_INFO("TIME", "Time subsystem shut down");
+}
+
+int ozayn_time_is_available(void) {
+    return _ozayn_time_initialized;
+}
+
+int64_t ozayn_time_unix_seconds(void) {
+    return (int64_t)time(NULL);
+}
+
+int64_t ozayn_time_unix_milliseconds(void) {
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    /* Convert to 100-nanosecond intervals since 1601 */
+    int64_t time = ((int64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+    /* Convert to Unix epoch (1601 to 1970 = 116444736000000000 100-ns intervals) */
+    time -= 116444736000000000LL;
+    return time / 10000;
+}
+
+int64_t ozayn_time_unix_microseconds(void) {
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    int64_t time = ((int64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+    time -= 116444736000000000LL;
+    return time / 10;
+}
+
+ozayn_result_t ozayn_time_get_local(OzaynDateTime *datetime) {
+    if (!datetime) return OZAYN_ERR_NULL;
+    if (!_ozayn_time_initialized) return OZAYN_ERR;
+
+    time_t raw = time(NULL);
+    struct tm tm_info;
+    localtime_s(&tm_info, &raw);
+
+    datetime->year = tm_info.tm_year + 1900;
+    datetime->month = tm_info.tm_mon + 1;
+    datetime->day = tm_info.tm_mday;
+    datetime->hour = tm_info.tm_hour;
+    datetime->minute = tm_info.tm_min;
+    datetime->second = tm_info.tm_sec;
+    datetime->millisecond = 0;
+
+    /* Calculate UTC offset */
+    struct tm utc_tm;
+    gmtime_s(&utc_tm, &raw);
+    datetime->utc_offset_minutes = (int)difftime(mktime(&tm_info), mktime(&utc_tm)) / 60;
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_time_get_utc(OzaynDateTime *datetime) {
+    if (!datetime) return OZAYN_ERR_NULL;
+    if (!_ozayn_time_initialized) return OZAYN_ERR;
+
+    time_t raw = time(NULL);
+    struct tm tm_info;
+    gmtime_s(&tm_info, &raw);
+
+    datetime->year = tm_info.tm_year + 1900;
+    datetime->month = tm_info.tm_mon + 1;
+    datetime->day = tm_info.tm_mday;
+    datetime->hour = tm_info.tm_hour;
+    datetime->minute = tm_info.tm_min;
+    datetime->second = tm_info.tm_sec;
+    datetime->millisecond = 0;
+    datetime->utc_offset_minutes = 0;
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_time_sleep_ms(uint64_t milliseconds) {
+    if (!_ozayn_time_initialized) return OZAYN_ERR;
+
+    if (milliseconds == 0) {
+        SwitchToThread();
+        return OZAYN_OK;
+    }
+
+    Sleep((DWORD)milliseconds);
+
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

@@ -2606,6 +2606,136 @@ ozayn_result_t ozayn_environment_get_hostname(char *buffer, size_t buffer_size) 
 }
 
 /* ================================================================
+ * Q. System Time & Date Abstraction (Step 17)
+ * ================================================================
+ *
+ * Cross-platform system time and date information.
+ * Uses POSIX clock_gettime on Linux.
+ * Read-only — no clock modification, no timezone changes.
+ * Basic sleep primitive only — no scheduling.
+ */
+
+#include <time.h>
+#include <unistd.h>
+#include <sys/time.h>
+#include <sched.h>
+
+static int _ozayn_time_initialized = 0;
+
+ozayn_result_t ozayn_time_init(void) {
+    if (_ozayn_time_initialized) return OZAYN_OK;
+    _ozayn_time_initialized = 1;
+    LOG_INFO("TIME", "Time subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_time_shutdown(void) {
+    if (!_ozayn_time_initialized) return;
+    _ozayn_time_initialized = 0;
+    LOG_INFO("TIME", "Time subsystem shut down");
+}
+
+int ozayn_time_is_available(void) {
+    return _ozayn_time_initialized;
+}
+
+int64_t ozayn_time_unix_seconds(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec;
+}
+
+int64_t ozayn_time_unix_milliseconds(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000 + (int64_t)ts.tv_nsec / 1000000;
+}
+
+int64_t ozayn_time_unix_microseconds(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (int64_t)ts.tv_sec * 1000000 + (int64_t)ts.tv_nsec / 1000;
+}
+
+static void _ozayn_time_fill_local(struct tm *tm_info, OzaynDateTime *dt) {
+    dt->year = tm_info->tm_year + 1900;
+    dt->month = tm_info->tm_mon + 1;
+    dt->day = tm_info->tm_mday;
+    dt->hour = tm_info->tm_hour;
+    dt->minute = tm_info->tm_min;
+    dt->second = tm_info->tm_sec;
+    dt->millisecond = 0;
+
+    /* Calculate UTC offset in minutes */
+    if (tm_info->tm_gmtoff != 0) {
+        dt->utc_offset_minutes = (int)(tm_info->tm_gmtoff / 60);
+    } else {
+        /* Fallback: compute offset */
+        struct tm local_tm = *tm_info;
+        struct tm utc_tm;
+        time_t raw = mktime(tm_info);
+        gmtime_r(&raw, &utc_tm);
+        dt->utc_offset_minutes = (int)difftime(mktime(&local_tm), mktime(&utc_tm)) / 60;
+    }
+}
+
+ozayn_result_t ozayn_time_get_local(OzaynDateTime *datetime) {
+    if (!datetime) return OZAYN_ERR_NULL;
+    if (!_ozayn_time_initialized) return OZAYN_ERR;
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+
+    struct tm tm_info;
+    localtime_r(&ts.tv_sec, &tm_info);
+
+    _ozayn_time_fill_local(&tm_info, datetime);
+    datetime->millisecond = (int)(ts.tv_nsec / 1000000);
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_time_get_utc(OzaynDateTime *datetime) {
+    if (!datetime) return OZAYN_ERR_NULL;
+    if (!_ozayn_time_initialized) return OZAYN_ERR;
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+
+    struct tm tm_info;
+    gmtime_r(&ts.tv_sec, &tm_info);
+
+    datetime->year = tm_info.tm_year + 1900;
+    datetime->month = tm_info.tm_mon + 1;
+    datetime->day = tm_info.tm_mday;
+    datetime->hour = tm_info.tm_hour;
+    datetime->minute = tm_info.tm_min;
+    datetime->second = tm_info.tm_sec;
+    datetime->millisecond = (int)(ts.tv_nsec / 1000000);
+    datetime->utc_offset_minutes = 0;
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_time_sleep_ms(uint64_t milliseconds) {
+    if (!_ozayn_time_initialized) return OZAYN_ERR;
+
+    if (milliseconds == 0) {
+        /* Zero sleep — yield the CPU briefly */
+        sched_yield();
+        return OZAYN_OK;
+    }
+
+    struct timespec ts;
+    ts.tv_sec = (time_t)(milliseconds / 1000);
+    ts.tv_nsec = (long)((milliseconds % 1000) * 1000000);
+
+    nanosleep(&ts, NULL);
+
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

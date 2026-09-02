@@ -1491,6 +1491,108 @@ Tests verify:
 - Small buffer handling for directories
 - Shutdown before init
 
+## Step 17 — System Time & Date Abstraction
+
+Cross-platform system time and date information. Read-only — no clock modification, no timezone changes.
+
+### Time Lifecycle
+
+```
+ozayn_time_init()
+        ↓
+query time
+        ↓
+ozayn_time_shutdown()
+```
+
+### Public API
+
+```c
+/* Time Lifecycle */
+ozayn_result_t ozayn_time_init(void);
+void           ozayn_time_shutdown(void);
+
+/* Time Queries */
+int            ozayn_time_is_available(void);
+
+/* Unix Timestamps */
+int64_t        ozayn_time_unix_seconds(void);
+int64_t        ozayn_time_unix_milliseconds(void);
+int64_t        ozayn_time_unix_microseconds(void);
+
+/* Date/Time Retrieval */
+ozayn_result_t ozayn_time_get_local(OzaynDateTime *datetime);
+ozayn_result_t ozayn_time_get_utc(OzaynDateTime *datetime);
+
+/* Sleep */
+ozayn_result_t ozayn_time_sleep_ms(uint64_t milliseconds);
+```
+
+### Data Structures
+
+```c
+typedef struct {
+    int year;
+    int month;          /* 1–12 */
+    int day;            /* 1–31 */
+    int hour;           /* 0–23 */
+    int minute;         /* 0–59 */
+    int second;         /* 0–59 */
+    int millisecond;    /* 0–999 */
+    int utc_offset_minutes;
+} OzaynDateTime;
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_time_shutdown()` is idempotent and safe to call multiple times
+- No clock modification, no timezone changes
+- No NTP synchronization
+- No system time modification
+- Read-only access to system time
+
+### Platform Implementations
+
+- Linux: POSIX `clock_gettime(CLOCK_REALTIME)`, `localtime_r`, `gmtime_r`, `nanosleep`
+- macOS: POSIX APIs (same as Linux)
+- Windows: `time()`, `localtime_s`, `gmtime_s`, `Sleep`, `GetSystemTimeAsFileTime`
+
+### Unix Timestamps
+
+- `unix_seconds`: `time()` — epoch seconds
+- `unix_milliseconds`: `clock_gettime` — epoch ms with nanosecond precision
+- `unix_microseconds`: `clock_gettime` — epoch us with nanosecond precision
+
+### Local vs UTC
+
+- Local: includes timezone offset via `tm_gmtoff`
+- UTC: always `utc_offset_minutes = 0`
+- Offset range: -720 to +720 minutes
+
+### Sleep
+
+- Uses `nanosleep()` on POSIX, `Sleep()` on Windows
+- Zero sleep yields CPU via `sched_yield()` / `SwitchToThread()`
+- No busy-waiting
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Unix seconds, milliseconds, microseconds
+- Timestamp consistency
+- Local date/time with valid ranges
+- UTC date/time with valid ranges
+- Local vs UTC offset validation
+- Sleep basic, zero, before init
+- NULL parameter handling
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1509,4 +1611,5 @@ Tests verify:
 - [x] Step 14: Notification System Abstraction
 - [x] Step 15: Clipboard Abstraction
 - [x] Step 16: Environment & User Session Abstraction
-- [ ] Steps 17-35: (future)
+- [x] Step 17: System Time & Date Abstraction
+- [ ] Steps 18-35: (future)

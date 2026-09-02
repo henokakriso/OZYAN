@@ -32,6 +32,7 @@
  *   N. Notification System Abstraction (Step 14)
  *   O. Clipboard Abstraction (Step 15)
  *   P. Environment & User Session Abstraction (Step 16)
+ *   Q. System Time & Date Abstraction (Step 17)
  */
 
 /* ================================================================
@@ -1003,7 +1004,7 @@ ozayn_result_t ozayn_clipboard_clear(void);
 
 #define OZAYN_MAX_ENV_VAR_NAME  256
 #define OZAYN_MAX_ENV_VAR_VALUE 4096
-#define OZAYN_MAX_PATH          1024
+#define OZAYN_MAX_ENV_PATH     1024
 #define OZAYN_MAX_USERNAME      256
 #define OZAYN_MAX_HOSTNAME      256
 
@@ -1033,6 +1034,52 @@ ozayn_result_t ozayn_environment_get_current_directory(char *buffer, size_t buff
 
 ozayn_result_t ozayn_environment_get_username(char *buffer, size_t buffer_size);
 ozayn_result_t ozayn_environment_get_hostname(char *buffer, size_t buffer_size);
+
+/* ================================================================
+ * Q. System Time & Date Abstraction (Step 17)
+ * ================================================================
+ *
+ * Cross-platform system time and date information.
+ * Read-only — no clock modification, no timezone changes.
+ * Basic sleep primitive only — no scheduling.
+ */
+
+/* ---- Date/Time Structure ---- */
+
+typedef struct {
+    int year;
+    int month;          /* 1–12 */
+    int day;            /* 1–31 */
+    int hour;           /* 0–23 */
+    int minute;         /* 0–59 */
+    int second;         /* 0–59 */
+    int millisecond;    /* 0–999 */
+    int utc_offset_minutes;
+} OzaynDateTime;
+
+/* ---- Time Lifecycle ---- */
+
+ozayn_result_t ozayn_time_init(void);
+void           ozayn_time_shutdown(void);
+
+/* ---- Time Queries ---- */
+
+int            ozayn_time_is_available(void);
+
+/* ---- Unix Timestamps ---- */
+
+int64_t        ozayn_time_unix_seconds(void);
+int64_t        ozayn_time_unix_milliseconds(void);
+int64_t        ozayn_time_unix_microseconds(void);
+
+/* ---- Date/Time Retrieval ---- */
+
+ozayn_result_t ozayn_time_get_local(OzaynDateTime *datetime);
+ozayn_result_t ozayn_time_get_utc(OzaynDateTime *datetime);
+
+/* ---- Sleep ---- */
+
+ozayn_result_t ozayn_time_sleep_ms(uint64_t milliseconds);
 
 /* ================================================================
  * Platform Lifecycle
