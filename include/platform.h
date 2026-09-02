@@ -30,6 +30,7 @@
  *   L. Network Information & Connectivity Abstraction (Step 12)
  *   M. Power & Battery Information Abstraction (Step 13)
  *   N. Notification System Abstraction (Step 14)
+ *   O. Clipboard Abstraction (Step 15)
  */
 
 /* ================================================================
@@ -956,6 +957,39 @@ int            ozayn_notification_is_available(void);
 /* ---- Notification Send ---- */
 
 ozayn_result_t ozayn_notification_send(const OzaynNotification *notification);
+
+/* ================================================================
+ * O. Clipboard Abstraction (Step 15)
+ * ================================================================
+ *
+ * Cross-platform plain-text clipboard read/write.
+ * No clipboard monitoring, no history, no remote access.
+ * Plain text only — no images, files, or rich text.
+ */
+
+#define OZAYN_MAX_CLIPBOARD_TEXT 65536
+
+/* ---- Clipboard Lifecycle ---- */
+
+ozayn_result_t ozayn_clipboard_init(void);
+void           ozayn_clipboard_shutdown(void);
+
+/* ---- Clipboard Queries ---- */
+
+int            ozayn_clipboard_is_available(void);
+int            ozayn_clipboard_has_text(void);
+
+/* ---- Clipboard Read ---- */
+
+ozayn_result_t ozayn_clipboard_get_text(char *buffer, size_t buffer_size, size_t *required_size);
+
+/* ---- Clipboard Write ---- */
+
+ozayn_result_t ozayn_clipboard_set_text(const char *text);
+
+/* ---- Clipboard Clear ---- */
+
+ozayn_result_t ozayn_clipboard_clear(void);
 
 /* ================================================================
  * Platform Lifecycle

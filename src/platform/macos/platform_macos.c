@@ -1094,6 +1094,55 @@ ozayn_result_t ozayn_notification_send(const OzaynNotification *notification) {
 }
 
 /* ================================================================
+ * O. Clipboard Abstraction (Step 15)
+ * ================================================================
+ *
+ * macOS stub — requires Pasteboard framework for full implementation.
+ */
+
+static int _ozayn_clip_initialized = 0;
+static int _ozayn_clip_available = 0;
+
+ozayn_result_t ozayn_clipboard_init(void) {
+    if (_ozayn_clip_initialized) return OZAYN_OK;
+    _ozayn_clip_initialized = 1;
+    _ozayn_clip_available = 0;
+    LOG_INFO("CLIPBOARD", "Clipboard subsystem initialized (stub, available=no)");
+    return OZAYN_OK;
+}
+
+void ozayn_clipboard_shutdown(void) {
+    if (!_ozayn_clip_initialized) return;
+    _ozayn_clip_initialized = 0;
+    _ozayn_clip_available = 0;
+    LOG_INFO("CLIPBOARD", "Clipboard subsystem shut down");
+}
+
+int ozayn_clipboard_is_available(void) {
+    return _ozayn_clip_available;
+}
+
+int ozayn_clipboard_has_text(void) {
+    return 0;
+}
+
+ozayn_result_t ozayn_clipboard_get_text(char *buffer, size_t buffer_size, size_t *required_size) {
+    (void)buffer;
+    (void)buffer_size;
+    if (required_size) *required_size = 0;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_clipboard_set_text(const char *text) {
+    (void)text;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_clipboard_clear(void) {
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

@@ -2258,6 +2258,195 @@ ozayn_result_t ozayn_notification_send(const OzaynNotification *notification) {
 }
 
 /* ================================================================
+ * O. Clipboard Abstraction (Step 15)
+ * ================================================================
+ *
+ * Cross-platform plain-text clipboard read/write.
+ * Uses X11 XSelection mechanism on Linux.
+ * No clipboard monitoring, no history, no remote access.
+ * Plain text only.
+ */
+
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+
+static Display *_ozayn_clip_display = NULL;
+static Window _ozayn_clip_window = None;
+static Atom _ozayn_clip_atom = None;
+static Atom _ozayn_clip_targets = None;
+static Atom _ozayn_clip_text = None;
+static int _ozayn_clip_available = 0;
+
+static int _ozayn_clip_check_x11(void) {
+    if (!getenv("DISPLAY") && !getenv("WAYLAND_DISPLAY")) {
+        return 0;
+    }
+    Display *d = XOpenDisplay(NULL);
+    if (d) {
+        XCloseDisplay(d);
+        return 1;
+    }
+    return 0;
+}
+
+ozayn_result_t ozayn_clipboard_init(void) {
+    if (_ozayn_clip_display) return OZAYN_OK;
+
+    if (!_ozayn_clip_check_x11()) {
+        _ozayn_clip_available = 0;
+        LOG_INFO("CLIPBOARD", "Clipboard subsystem initialized (available=no, no X11)");
+        return OZAYN_OK;
+    }
+
+    _ozayn_clip_display = XOpenDisplay(NULL);
+    if (!_ozayn_clip_display) {
+        _ozayn_clip_available = 0;
+        LOG_INFO("CLIPBOARD", "Clipboard subsystem initialized (available=no, XOpenDisplay failed)");
+        return OZAYN_OK;
+    }
+
+    /* Create a window for clipboard operations */
+    _ozayn_clip_window = XCreateSimpleWindow(_ozayn_clip_display,
+                                              DefaultRootWindow(_ozayn_clip_display),
+                                              0, 0, 1, 1, 0, 0, 0);
+
+    /* Atoms */
+    _ozayn_clip_atom = XInternAtom(_ozayn_clip_display, "CLIPBOARD", False);
+    _ozayn_clip_targets = XInternAtom(_ozayn_clip_display, "TARGETS", False);
+    _ozayn_clip_text = XInternAtom(_ozayn_clip_display, "UTF8_STRING", False);
+
+    _ozayn_clip_available = 1;
+
+    LOG_INFO("CLIPBOARD", "Clipboard subsystem initialized (available=yes)");
+    return OZAYN_OK;
+}
+
+void ozayn_clipboard_shutdown(void) {
+    if (!_ozayn_clip_display) return;
+
+    if (_ozayn_clip_window != None) {
+        XDestroyWindow(_ozayn_clip_display, _ozayn_clip_window);
+        _ozayn_clip_window = None;
+    }
+
+    XCloseDisplay(_ozayn_clip_display);
+    _ozayn_clip_display = NULL;
+    _ozayn_clip_available = 0;
+
+    LOG_INFO("CLIPBOARD", "Clipboard subsystem shut down");
+}
+
+int ozayn_clipboard_is_available(void) {
+    return _ozayn_clip_available;
+}
+
+int ozayn_clipboard_has_text(void) {
+    if (!_ozayn_clip_display || !_ozayn_clip_available) return 0;
+
+    Atom actual;
+    int format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(_ozayn_clip_display, _ozayn_clip_window,
+                                    _ozayn_clip_atom, 0, 0, False,
+                                    XA_ATOM, &actual, &format, &nitems, &bytes_after, &data);
+
+    if (data) XFree(data);
+
+    if (status != Success) return 0;
+
+    /* Check if UTF8_STRING target exists */
+    data = NULL;
+    status = XGetWindowProperty(_ozayn_clip_display, _ozayn_clip_window,
+                                _ozayn_clip_targets, 0, 1024, False,
+                                XA_ATOM, &actual, &format, &nitems, &bytes_after, &data);
+
+    if (status != Success || !data) return 0;
+
+    int has_utf8 = 0;
+    Atom *atoms = (Atom *)data;
+    for (unsigned long i = 0; i < nitems; i++) {
+        if (atoms[i] == _ozayn_clip_text) {
+            has_utf8 = 1;
+            break;
+        }
+    }
+
+    XFree(data);
+    return has_utf8;
+}
+
+ozayn_result_t ozayn_clipboard_get_text(char *buffer, size_t buffer_size, size_t *required_size) {
+    if (!buffer && required_size) {
+        *required_size = 0;
+    }
+
+    if (!_ozayn_clip_display || !_ozayn_clip_available) return OZAYN_ERR;
+
+    /* Request clipboard ownership */
+    XSetSelectionOwner(_ozayn_clip_display, _ozayn_clip_atom, _ozayn_clip_window, CurrentTime);
+
+    /* Read property */
+    Atom actual;
+    int format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(_ozayn_clip_display, _ozayn_clip_window,
+                                    _ozayn_clip_atom, 0, 1024 * 1024, False,
+                                    _ozayn_clip_text, &actual, &format,
+                                    &nitems, &bytes_after, &data);
+
+    if (status != Success || !data || nitems == 0) {
+        if (data) XFree(data);
+        if (buffer && buffer_size > 0) buffer[0] = '\0';
+        if (required_size) *required_size = 0;
+        return OZAYN_OK;
+    }
+
+    size_t text_len = (size_t)nitems;
+
+    if (required_size) *required_size = text_len + 1;
+
+    if (!buffer || buffer_size == 0) {
+        XFree(data);
+        return OZAYN_OK;
+    }
+
+    size_t copy_len = (text_len < buffer_size - 1) ? text_len : buffer_size - 1;
+    memcpy(buffer, data, copy_len);
+    buffer[copy_len] = '\0';
+
+    XFree(data);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_clipboard_set_text(const char *text) {
+    if (!text) return OZAYN_ERR_NULL;
+    if (!_ozayn_clip_display || !_ozayn_clip_available) return OZAYN_ERR;
+
+    /* Store text in the clipboard window property */
+    XChangeProperty(_ozayn_clip_display, _ozayn_clip_window,
+                    _ozayn_clip_atom, _ozayn_clip_text, 8,
+                    PropModeReplace, (unsigned char *)text, (int)strlen(text));
+
+    XFlush(_ozayn_clip_display);
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_clipboard_clear(void) {
+    if (!_ozayn_clip_display || !_ozayn_clip_available) return OZAYN_ERR;
+
+    /* Delete the clipboard property */
+    XDeleteProperty(_ozayn_clip_display, _ozayn_clip_window, _ozayn_clip_atom);
+    XFlush(_ozayn_clip_display);
+
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

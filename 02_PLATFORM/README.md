@@ -1289,6 +1289,105 @@ Tests verify:
 - Send after shutdown rejection
 - Shutdown before init
 
+## Step 15 — Clipboard Abstraction
+
+Cross-platform plain-text clipboard read/write. No clipboard monitoring, no history, no remote access.
+
+### Clipboard Lifecycle
+
+```
+ozayn_clipboard_init()
+        ↓
+check availability
+        ↓
+read/write clipboard
+        ↓
+ozayn_clipboard_shutdown()
+```
+
+### Public API
+
+```c
+/* Clipboard Lifecycle */
+ozayn_result_t ozayn_clipboard_init(void);
+void           ozayn_clipboard_shutdown(void);
+
+/* Clipboard Queries */
+int            ozayn_clipboard_is_available(void);
+int            ozayn_clipboard_has_text(void);
+
+/* Clipboard Read */
+ozayn_result_t ozayn_clipboard_get_text(char *buffer, size_t buffer_size, size_t *required_size);
+
+/* Clipboard Write */
+ozayn_result_t ozayn_clipboard_set_text(const char *text);
+
+/* Clipboard Clear */
+ozayn_result_t ozayn_clipboard_clear(void);
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_clipboard_shutdown()` is idempotent and safe to call multiple times
+- Empty clipboard content handled gracefully
+- Buffer overflow prevention: never writes beyond `buffer_size`
+- NUL-termination guaranteed when buffer is large enough
+- Required size querying supported (pass NULL buffer)
+- UTF-8 text supported
+- No clipboard monitoring, no history, no remote access
+- No command execution from clipboard content
+
+### Platform Implementations
+
+- Linux: X11 XSelection mechanism (UTF8_STRING target)
+- macOS: Stub (requires Pasteboard framework)
+- Windows: Stub (requires Win32 Clipboard API)
+
+### Linux Implementation
+
+- Uses X11 `XSetSelectionOwner` / `XGetWindowProperty` for clipboard access
+- Supports UTF8_STRING text format
+- Creates a hidden window for clipboard operations
+- Checks for X11 availability (DISPLAY or WAYLAND_DISPLAY)
+- No external tools (xclip, xsel, wl-copy) — native X11 only
+
+### Headless Behavior
+
+- Clipboard subsystem reports unavailable on headless systems
+- All operations return error when unavailable
+- No crashes or errors in headless mode
+
+### Security
+
+- Clipboard data never written to logs, database, or network
+- No clipboard monitoring or surveillance
+- No automatic command execution
+- No password or credential harvesting
+- Plain text only — no images, files, or rich text
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Has text detection
+- Set/get basic text
+- Set/get Unicode/UTF-8 text
+- Set/get empty string
+- NULL buffer handling
+- Zero buffer size
+- Small buffer truncation
+- Required size reporting
+- Clear operation
+- Operations after shutdown
+- NULL text rejection
+- Shutdown before init
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1305,4 +1404,5 @@ Tests verify:
 - [x] Step 12: Network Information & Connectivity Abstraction
 - [x] Step 13: Power & Battery Information Abstraction
 - [x] Step 14: Notification System Abstraction
-- [ ] Steps 15-35: (future)
+- [x] Step 15: Clipboard Abstraction
+- [ ] Steps 16-35: (future)
