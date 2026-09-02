@@ -24,7 +24,8 @@
  *   F. Network
  *   G. Camera (stubs for Section 05)
  *   H. Audio (stubs for Section 06)
- *   I. Input (stubs for Section 07)
+ *   I. Input (Step 07)
+ *   J. Keyboard & Input Event Abstraction (Step 08)
  */
 
 /* ================================================================
@@ -467,6 +468,106 @@ typedef OzaynInputDeviceInfo ozayn_input_info_t;
 
 /* Query input device availability (legacy). */
 ozayn_result_t ozayn_input_info(ozayn_input_info_t *info);
+
+/* ================================================================
+ * J. Keyboard & Basic Input Event Abstraction (Step 08)
+ * ================================================================
+ *
+ * Platform-independent keyboard state and input event representation.
+ * Keyboard state queries are non-blocking and do not create a
+ * background keylogger.
+ */
+
+/* Modifier flags (bitmask) */
+#define OZAYN_MOD_SHIFT    (1 << 0)
+#define OZAYN_MOD_CTRL     (1 << 1)
+#define OZAYN_MOD_ALT      (1 << 2)
+
+/* Key enumeration — platform-independent */
+typedef enum {
+    OZAYN_KEY_UNKNOWN = 0,
+
+    /* Letters */
+    OZAYN_KEY_A, OZAYN_KEY_B, OZAYN_KEY_C, OZAYN_KEY_D, OZAYN_KEY_E,
+    OZAYN_KEY_F, OZAYN_KEY_G, OZAYN_KEY_H, OZAYN_KEY_I, OZAYN_KEY_J,
+    OZAYN_KEY_K, OZAYN_KEY_L, OZAYN_KEY_M, OZAYN_KEY_N, OZAYN_KEY_O,
+    OZAYN_KEY_P, OZAYN_KEY_Q, OZAYN_KEY_R, OZAYN_KEY_S, OZAYN_KEY_T,
+    OZAYN_KEY_U, OZAYN_KEY_V, OZAYN_KEY_W, OZAYN_KEY_X, OZAYN_KEY_Y,
+    OZAYN_KEY_Z,
+
+    /* Digits */
+    OZAYN_KEY_0, OZAYN_KEY_1, OZAYN_KEY_2, OZAYN_KEY_3, OZAYN_KEY_4,
+    OZAYN_KEY_5, OZAYN_KEY_6, OZAYN_KEY_7, OZAYN_KEY_8, OZAYN_KEY_9,
+
+    /* Control keys */
+    OZAYN_KEY_ESCAPE, OZAYN_KEY_ENTER, OZAYN_KEY_TAB, OZAYN_KEY_SPACE,
+    OZAYN_KEY_BACKSPACE,
+
+    /* Modifier keys */
+    OZAYN_KEY_SHIFT, OZAYN_KEY_CTRL, OZAYN_KEY_ALT,
+
+    /* Arrow keys */
+    OZAYN_KEY_UP, OZAYN_KEY_DOWN, OZAYN_KEY_LEFT, OZAYN_KEY_RIGHT,
+
+    /* Navigation */
+    OZAYN_KEY_HOME, OZAYN_KEY_END, OZAYN_KEY_PAGE_UP, OZAYN_KEY_PAGE_DOWN,
+    OZAYN_KEY_INSERT, OZAYN_KEY_DELETE,
+
+    /* Function keys */
+    OZAYN_KEY_F1, OZAYN_KEY_F2, OZAYN_KEY_F3, OZAYN_KEY_F4,
+    OZAYN_KEY_F5, OZAYN_KEY_F6, OZAYN_KEY_F7, OZAYN_KEY_F8,
+    OZAYN_KEY_F9, OZAYN_KEY_F10, OZAYN_KEY_F11, OZAYN_KEY_F12,
+
+    OZAYN_KEY_COUNT
+} OzaynKey;
+
+/* Input event type */
+typedef enum {
+    OZAYN_INPUT_EVENT_NONE = 0,
+    OZAYN_INPUT_EVENT_KEY_DOWN,
+    OZAYN_INPUT_EVENT_KEY_UP
+} OzaynInputEventType;
+
+/* Input event structure */
+typedef struct {
+    OzaynInputEventType type;
+    OzaynKey key;
+    unsigned int modifiers;
+} OzaynInputEvent;
+
+/* Keyboard state */
+typedef struct {
+    int initialized;
+    int available;
+} OzaynKeyboardState;
+
+/* ---- Keyboard Lifecycle ---- */
+
+/* Initialize keyboard subsystem. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_keyboard_init(void);
+
+/* Shutdown keyboard subsystem. Safe to call multiple times. */
+void ozayn_keyboard_shutdown(void);
+
+/* Check if keyboard subsystem is available. Returns 1 if available, 0 otherwise. */
+int ozayn_keyboard_is_available(void);
+
+/* ---- Key State ---- */
+
+/* Check if a specific key is currently pressed. Returns 1 if pressed, 0 if not,
+ * -1 if query is unsupported. */
+int ozayn_keyboard_is_key_down(OzaynKey key);
+
+/* ---- Event Polling ---- */
+
+/* Poll for the next keyboard event (non-blocking). Returns OZAYN_OK if an event
+ * was retrieved, OZAYN_ERR if no event is available or polling is unsupported. */
+ozayn_result_t ozayn_keyboard_poll_event(OzaynInputEvent *event);
+
+/* ---- Key Name ---- */
+
+/* Get human-readable name for a key. Never returns NULL. */
+const char *ozayn_key_name(OzaynKey key);
 
 /* ================================================================
  * Platform Lifecycle

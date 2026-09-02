@@ -856,6 +856,86 @@ ozayn_result_t ozayn_input_info(ozayn_input_info_t *info) {
 }
 
 /* ================================================================
+ * J. Keyboard & Basic Input Event Abstraction (Step 08)
+ * ================================================================
+ *
+ * Windows stub — uses GetAsyncKeyState for key state queries.
+ * Event polling is not yet implemented.
+ */
+
+static OzaynKeyboardState _ozayn_keyboard = {0};
+
+static const char *_ozayn_key_name_table_win[OZAYN_KEY_COUNT] = {
+    [OZAYN_KEY_UNKNOWN] = "Unknown",
+    [OZAYN_KEY_A] = "A", [OZAYN_KEY_B] = "B", [OZAYN_KEY_C] = "C",
+    [OZAYN_KEY_D] = "D", [OZAYN_KEY_E] = "E", [OZAYN_KEY_F] = "F",
+    [OZAYN_KEY_G] = "G", [OZAYN_KEY_H] = "H", [OZAYN_KEY_I] = "I",
+    [OZAYN_KEY_J] = "J", [OZAYN_KEY_K] = "K", [OZAYN_KEY_L] = "L",
+    [OZAYN_KEY_M] = "M", [OZAYN_KEY_N] = "N", [OZAYN_KEY_O] = "O",
+    [OZAYN_KEY_P] = "P", [OZAYN_KEY_Q] = "Q", [OZAYN_KEY_R] = "R",
+    [OZAYN_KEY_S] = "S", [OZAYN_KEY_T] = "T", [OZAYN_KEY_U] = "U",
+    [OZAYN_KEY_V] = "V", [OZAYN_KEY_W] = "W", [OZAYN_KEY_X] = "X",
+    [OZAYN_KEY_Y] = "Y", [OZAYN_KEY_Z] = "Z",
+    [OZAYN_KEY_0] = "0", [OZAYN_KEY_1] = "1", [OZAYN_KEY_2] = "2",
+    [OZAYN_KEY_3] = "3", [OZAYN_KEY_4] = "4", [OZAYN_KEY_5] = "5",
+    [OZAYN_KEY_6] = "6", [OZAYN_KEY_7] = "7", [OZAYN_KEY_8] = "8",
+    [OZAYN_KEY_9] = "9",
+    [OZAYN_KEY_ESCAPE] = "Escape", [OZAYN_KEY_ENTER] = "Enter",
+    [OZAYN_KEY_TAB] = "Tab", [OZAYN_KEY_SPACE] = "Space",
+    [OZAYN_KEY_BACKSPACE] = "Backspace",
+    [OZAYN_KEY_SHIFT] = "Shift", [OZAYN_KEY_CTRL] = "Ctrl",
+    [OZAYN_KEY_ALT] = "Alt",
+    [OZAYN_KEY_UP] = "Up", [OZAYN_KEY_DOWN] = "Down",
+    [OZAYN_KEY_LEFT] = "Left", [OZAYN_KEY_RIGHT] = "Right",
+    [OZAYN_KEY_HOME] = "Home", [OZAYN_KEY_END] = "End",
+    [OZAYN_KEY_PAGE_UP] = "PageUp", [OZAYN_KEY_PAGE_DOWN] = "PageDown",
+    [OZAYN_KEY_INSERT] = "Insert", [OZAYN_KEY_DELETE] = "Delete",
+    [OZAYN_KEY_F1] = "F1", [OZAYN_KEY_F2] = "F2", [OZAYN_KEY_F3] = "F3",
+    [OZAYN_KEY_F4] = "F4", [OZAYN_KEY_F5] = "F5", [OZAYN_KEY_F6] = "F6",
+    [OZAYN_KEY_F7] = "F7", [OZAYN_KEY_F8] = "F8", [OZAYN_KEY_F9] = "F9",
+    [OZAYN_KEY_F10] = "F10", [OZAYN_KEY_F11] = "F11", [OZAYN_KEY_F12] = "F12",
+};
+
+ozayn_result_t ozayn_keyboard_init(void) {
+    if (_ozayn_keyboard.initialized) return OZAYN_OK;
+    memset(&_ozayn_keyboard, 0, sizeof(OzaynKeyboardState));
+    _ozayn_keyboard.available = 1;
+    _ozayn_keyboard.initialized = 1;
+    return OZAYN_OK;
+}
+
+void ozayn_keyboard_shutdown(void) {
+    if (!_ozayn_keyboard.initialized) return;
+    memset(&_ozayn_keyboard, 0, sizeof(OzaynKeyboardState));
+}
+
+int ozayn_keyboard_is_available(void) {
+    return _ozayn_keyboard.available;
+}
+
+int ozayn_keyboard_is_key_down(OzaynKey key) {
+    (void)key;
+    if (!_ozayn_keyboard.initialized || !_ozayn_keyboard.available) return -1;
+    /* TODO: GetAsyncKeyState mapping */
+    return -1;
+}
+
+ozayn_result_t ozayn_keyboard_poll_event(OzaynInputEvent *event) {
+    if (!event) return OZAYN_ERR_NULL;
+    if (!_ozayn_keyboard.initialized) return OZAYN_ERR;
+    event->type = OZAYN_INPUT_EVENT_NONE;
+    event->key = OZAYN_KEY_UNKNOWN;
+    event->modifiers = 0;
+    return OZAYN_ERR;
+}
+
+const char *ozayn_key_name(OzaynKey key) {
+    if (key <= OZAYN_KEY_UNKNOWN || key >= OZAYN_KEY_COUNT) return "Unknown";
+    const char *name = _ozayn_key_name_table_win[key];
+    return name ? name : "Unknown";
+}
+
+/* ================================================================
  * Platform Detection & Initialization
  * ================================================================ */
 

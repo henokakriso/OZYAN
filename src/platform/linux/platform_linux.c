@@ -1130,6 +1130,192 @@ ozayn_result_t ozayn_input_info(ozayn_input_info_t *info) {
 }
 
 /* ================================================================
+ * J. Keyboard & Basic Input Event Abstraction (Step 08)
+ * ================================================================
+ *
+ * Uses X11 XQueryKeymap for key state queries and XCheckWindowEvent
+ * for non-blocking event polling. Key mapping translates OzaynKey
+ * to X11 KeySym via a static lookup table.
+ */
+
+static OzaynKeyboardState _ozayn_keyboard = {0};
+
+/* OzaynKey -> X11 KeySym mapping table */
+static KeySym _ozayn_key_to_keysym_table[OZAYN_KEY_COUNT] = {
+    [OZAYN_KEY_UNKNOWN] = 0,
+
+    /* Letters */
+    [OZAYN_KEY_A] = XK_a, [OZAYN_KEY_B] = XK_b, [OZAYN_KEY_C] = XK_c,
+    [OZAYN_KEY_D] = XK_d, [OZAYN_KEY_E] = XK_e, [OZAYN_KEY_F] = XK_f,
+    [OZAYN_KEY_G] = XK_g, [OZAYN_KEY_H] = XK_h, [OZAYN_KEY_I] = XK_i,
+    [OZAYN_KEY_J] = XK_j, [OZAYN_KEY_K] = XK_k, [OZAYN_KEY_L] = XK_l,
+    [OZAYN_KEY_M] = XK_m, [OZAYN_KEY_N] = XK_n, [OZAYN_KEY_O] = XK_o,
+    [OZAYN_KEY_P] = XK_p, [OZAYN_KEY_Q] = XK_q, [OZAYN_KEY_R] = XK_r,
+    [OZAYN_KEY_S] = XK_s, [OZAYN_KEY_T] = XK_t, [OZAYN_KEY_U] = XK_u,
+    [OZAYN_KEY_V] = XK_v, [OZAYN_KEY_W] = XK_w, [OZAYN_KEY_X] = XK_x,
+    [OZAYN_KEY_Y] = XK_y, [OZAYN_KEY_Z] = XK_z,
+
+    /* Digits */
+    [OZAYN_KEY_0] = XK_0, [OZAYN_KEY_1] = XK_1, [OZAYN_KEY_2] = XK_2,
+    [OZAYN_KEY_3] = XK_3, [OZAYN_KEY_4] = XK_4, [OZAYN_KEY_5] = XK_5,
+    [OZAYN_KEY_6] = XK_6, [OZAYN_KEY_7] = XK_7, [OZAYN_KEY_8] = XK_8,
+    [OZAYN_KEY_9] = XK_9,
+
+    /* Control keys */
+    [OZAYN_KEY_ESCAPE] = XK_Escape, [OZAYN_KEY_ENTER] = XK_Return,
+    [OZAYN_KEY_TAB] = XK_Tab, [OZAYN_KEY_SPACE] = XK_space,
+    [OZAYN_KEY_BACKSPACE] = XK_BackSpace,
+
+    /* Modifier keys */
+    [OZAYN_KEY_SHIFT] = XK_Shift_L, [OZAYN_KEY_CTRL] = XK_Control_L,
+    [OZAYN_KEY_ALT] = XK_Alt_L,
+
+    /* Arrow keys */
+    [OZAYN_KEY_UP] = XK_Up, [OZAYN_KEY_DOWN] = XK_Down,
+    [OZAYN_KEY_LEFT] = XK_Left, [OZAYN_KEY_RIGHT] = XK_Right,
+
+    /* Navigation */
+    [OZAYN_KEY_HOME] = XK_Home, [OZAYN_KEY_END] = XK_End,
+    [OZAYN_KEY_PAGE_UP] = XK_Page_Up, [OZAYN_KEY_PAGE_DOWN] = XK_Page_Down,
+    [OZAYN_KEY_INSERT] = XK_Insert, [OZAYN_KEY_DELETE] = XK_Delete,
+
+    /* Function keys */
+    [OZAYN_KEY_F1] = XK_F1, [OZAYN_KEY_F2] = XK_F2, [OZAYN_KEY_F3] = XK_F3,
+    [OZAYN_KEY_F4] = XK_F4, [OZAYN_KEY_F5] = XK_F5, [OZAYN_KEY_F6] = XK_F6,
+    [OZAYN_KEY_F7] = XK_F7, [OZAYN_KEY_F8] = XK_F8, [OZAYN_KEY_F9] = XK_F9,
+    [OZAYN_KEY_F10] = XK_F10, [OZAYN_KEY_F11] = XK_F11, [OZAYN_KEY_F12] = XK_F12,
+};
+
+/* OzaynKey -> human-readable name table */
+static const char *_ozayn_key_name_table[OZAYN_KEY_COUNT] = {
+    [OZAYN_KEY_UNKNOWN] = "Unknown",
+    [OZAYN_KEY_A] = "A", [OZAYN_KEY_B] = "B", [OZAYN_KEY_C] = "C",
+    [OZAYN_KEY_D] = "D", [OZAYN_KEY_E] = "E", [OZAYN_KEY_F] = "F",
+    [OZAYN_KEY_G] = "G", [OZAYN_KEY_H] = "H", [OZAYN_KEY_I] = "I",
+    [OZAYN_KEY_J] = "J", [OZAYN_KEY_K] = "K", [OZAYN_KEY_L] = "L",
+    [OZAYN_KEY_M] = "M", [OZAYN_KEY_N] = "N", [OZAYN_KEY_O] = "O",
+    [OZAYN_KEY_P] = "P", [OZAYN_KEY_Q] = "Q", [OZAYN_KEY_R] = "R",
+    [OZAYN_KEY_S] = "S", [OZAYN_KEY_T] = "T", [OZAYN_KEY_U] = "U",
+    [OZAYN_KEY_V] = "V", [OZAYN_KEY_W] = "W", [OZAYN_KEY_X] = "X",
+    [OZAYN_KEY_Y] = "Y", [OZAYN_KEY_Z] = "Z",
+    [OZAYN_KEY_0] = "0", [OZAYN_KEY_1] = "1", [OZAYN_KEY_2] = "2",
+    [OZAYN_KEY_3] = "3", [OZAYN_KEY_4] = "4", [OZAYN_KEY_5] = "5",
+    [OZAYN_KEY_6] = "6", [OZAYN_KEY_7] = "7", [OZAYN_KEY_8] = "8",
+    [OZAYN_KEY_9] = "9",
+    [OZAYN_KEY_ESCAPE] = "Escape", [OZAYN_KEY_ENTER] = "Enter",
+    [OZAYN_KEY_TAB] = "Tab", [OZAYN_KEY_SPACE] = "Space",
+    [OZAYN_KEY_BACKSPACE] = "Backspace",
+    [OZAYN_KEY_SHIFT] = "Shift", [OZAYN_KEY_CTRL] = "Ctrl",
+    [OZAYN_KEY_ALT] = "Alt",
+    [OZAYN_KEY_UP] = "Up", [OZAYN_KEY_DOWN] = "Down",
+    [OZAYN_KEY_LEFT] = "Left", [OZAYN_KEY_RIGHT] = "Right",
+    [OZAYN_KEY_HOME] = "Home", [OZAYN_KEY_END] = "End",
+    [OZAYN_KEY_PAGE_UP] = "PageUp", [OZAYN_KEY_PAGE_DOWN] = "PageDown",
+    [OZAYN_KEY_INSERT] = "Insert", [OZAYN_KEY_DELETE] = "Delete",
+    [OZAYN_KEY_F1] = "F1", [OZAYN_KEY_F2] = "F2", [OZAYN_KEY_F3] = "F3",
+    [OZAYN_KEY_F4] = "F4", [OZAYN_KEY_F5] = "F5", [OZAYN_KEY_F6] = "F6",
+    [OZAYN_KEY_F7] = "F7", [OZAYN_KEY_F8] = "F8", [OZAYN_KEY_F9] = "F9",
+    [OZAYN_KEY_F10] = "F10", [OZAYN_KEY_F11] = "F11", [OZAYN_KEY_F12] = "F12",
+};
+
+static KeyCode _ozayn_key_to_x11(OzaynKey key) {
+    if (key <= OZAYN_KEY_UNKNOWN || key >= OZAYN_KEY_COUNT) return 0;
+    KeySym sym = _ozayn_key_to_keysym_table[key];
+    if (sym == 0) return 0;
+    return XKeysymToKeycode(_ozayn_input_display, sym);
+}
+
+ozayn_result_t ozayn_keyboard_init(void) {
+    if (_ozayn_keyboard.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_keyboard, 0, sizeof(OzaynKeyboardState));
+
+    if (_ozayn_input_display) {
+        _ozayn_keyboard.available = 1;
+    }
+
+    _ozayn_keyboard.initialized = 1;
+
+    LOG_INFO("KEYBOARD", "Keyboard subsystem initialized (available=%s)",
+             _ozayn_keyboard.available ? "yes" : "no");
+
+    return OZAYN_OK;
+}
+
+void ozayn_keyboard_shutdown(void) {
+    if (!_ozayn_keyboard.initialized) return;
+    memset(&_ozayn_keyboard, 0, sizeof(OzaynKeyboardState));
+    LOG_INFO("KEYBOARD", "Keyboard subsystem shut down");
+}
+
+int ozayn_keyboard_is_available(void) {
+    return _ozayn_keyboard.available;
+}
+
+int ozayn_keyboard_is_key_down(OzaynKey key) {
+    if (!_ozayn_keyboard.initialized) return -1;
+    if (!_ozayn_keyboard.available) return -1;
+    if (key <= OZAYN_KEY_UNKNOWN || key >= OZAYN_KEY_COUNT) return -1;
+
+    KeyCode xcode = _ozayn_key_to_x11(key);
+    if (xcode == 0) return -1;
+
+    char keys_return[32];
+    XQueryKeymap(_ozayn_input_display, keys_return);
+
+    return (keys_return[xcode >> 3] & (1 << (xcode & 7))) ? 1 : 0;
+}
+
+ozayn_result_t ozayn_keyboard_poll_event(OzaynInputEvent *event) {
+    if (!event) return OZAYN_ERR_NULL;
+    if (!_ozayn_keyboard.initialized) return OZAYN_ERR;
+
+    event->type = OZAYN_INPUT_EVENT_NONE;
+    event->key = OZAYN_KEY_UNKNOWN;
+    event->modifiers = 0;
+
+    if (!_ozayn_keyboard.available || !_ozayn_input_display) return OZAYN_ERR;
+
+    /* Non-blocking check for pending X11 events */
+    if (!XPending(_ozayn_input_display)) return OZAYN_ERR;
+
+    XEvent xev;
+    XNextEvent(_ozayn_input_display, &xev);
+
+    if (xev.type == KeyPress || xev.type == KeyRelease) {
+        KeySym sym = XLookupKeysym(&xev.xkey, 0);
+
+        /* Map KeySym to OzaynKey */
+        OzaynKey oz_key = OZAYN_KEY_UNKNOWN;
+        for (int i = 1; i < OZAYN_KEY_COUNT; i++) {
+            if (_ozayn_key_to_keysym_table[i] == sym) {
+                oz_key = (OzaynKey)i;
+                break;
+            }
+        }
+
+        event->type = (xev.type == KeyPress) ? OZAYN_INPUT_EVENT_KEY_DOWN : OZAYN_INPUT_EVENT_KEY_UP;
+        event->key = oz_key;
+
+        /* Determine modifier state */
+        event->modifiers = 0;
+        if (xev.xkey.state & ShiftMask)   event->modifiers |= OZAYN_MOD_SHIFT;
+        if (xev.xkey.state & ControlMask) event->modifiers |= OZAYN_MOD_CTRL;
+        if (xev.xkey.state & Mod1Mask)    event->modifiers |= OZAYN_MOD_ALT;
+
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+const char *ozayn_key_name(OzaynKey key) {
+    if (key <= OZAYN_KEY_UNKNOWN || key >= OZAYN_KEY_COUNT) return "Unknown";
+    const char *name = _ozayn_key_name_table[key];
+    return name ? name : "Unknown";
+}
+
+/* ================================================================
  * Platform Detection & Initialization
  * ================================================================ */
 

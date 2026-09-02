@@ -364,6 +364,131 @@ Tests verify:
 - Pre-init error handling
 - Legacy API compatibility
 
+## Step 08 — Keyboard & Basic Input Event Abstraction
+
+Cross-platform keyboard state queries and input event representation.
+
+### Supported Keys
+
+| Category | Keys |
+|----------|------|
+| Letters | A-Z |
+| Digits | 0-9 |
+| Control | Escape, Enter, Tab, Space, Backspace |
+| Modifiers | Shift, Ctrl, Alt |
+| Navigation | Up, Down, Left, Right, Home, End, PageUp, PageDown, Insert, Delete |
+| Function | F1-F12 |
+
+### Public API
+
+```c
+/* Keyboard Lifecycle */
+ozayn_result_t ozayn_keyboard_init(void);
+void           ozayn_keyboard_shutdown(void);
+int            ozayn_keyboard_is_available(void);
+
+/* Key State — returns 1 if pressed, 0 if not, -1 if unsupported */
+int            ozayn_keyboard_is_key_down(OzaynKey key);
+
+/* Event Polling (non-blocking) */
+ozayn_result_t ozayn_keyboard_poll_event(OzaynInputEvent *event);
+
+/* Key Name */
+const char    *ozayn_key_name(OzaynKey key);
+```
+
+### Data Structures
+
+```c
+typedef enum {
+    OZAYN_KEY_UNKNOWN = 0,
+    OZAYN_KEY_A, /* ... OZAYN_KEY_Z */
+    OZAYN_KEY_0, /* ... OZAYN_KEY_9 */
+    OZAYN_KEY_ESCAPE, OZAYN_KEY_ENTER, OZAYN_KEY_TAB, OZAYN_KEY_SPACE, OZAYN_KEY_BACKSPACE,
+    OZAYN_KEY_SHIFT, OZAYN_KEY_CTRL, OZAYN_KEY_ALT,
+    OZAYN_KEY_UP, OZAYN_KEY_DOWN, OZAYN_KEY_LEFT, OZAYN_KEY_RIGHT,
+    OZAYN_KEY_HOME, OZAYN_KEY_END, OZAYN_KEY_PAGE_UP, OZAYN_KEY_PAGE_DOWN,
+    OZAYN_KEY_INSERT, OZAYN_KEY_DELETE,
+    OZAYN_KEY_F1, /* ... OZAYN_KEY_F12 */
+    OZAYN_KEY_COUNT
+} OzaynKey;
+
+typedef enum {
+    OZAYN_INPUT_EVENT_NONE = 0,
+    OZAYN_INPUT_EVENT_KEY_DOWN,
+    OZAYN_INPUT_EVENT_KEY_UP
+} OzaynInputEventType;
+
+typedef struct {
+    OzaynInputEventType type;
+    OzaynKey key;
+    unsigned int modifiers;
+} OzaynInputEvent;
+
+/* Modifier flags (bitmask) */
+#define OZAYN_MOD_SHIFT    (1 << 0)
+#define OZAYN_MOD_CTRL     (1 << 1)
+#define OZAYN_MOD_ALT      (1 << 2)
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_keyboard_shutdown()` is idempotent and safe to call multiple times
+- Works in headless environments (returns available=0, key state -1)
+- No keylogging, no hidden input recording, no stealth surveillance
+- No credential harvesting, no persistence, no privilege escalation
+- No background thread recording keyboard events
+- Event polling is non-blocking — does not freeze runtime
+- Keyboard input is never written to disk
+
+### Platform Implementations
+
+- Linux: X11 XQueryKeymap for key state, XLookupString for event polling
+- macOS: Stub (requires Core Graphics event tap + accessibility permissions)
+- Windows: Stub (requires GetAsyncKeyState mapping)
+
+### Linux Limitations
+
+- Requires X11 display server (or `DISPLAY`/`WAYLAND_DISPLAY` environment variable)
+- Requires `libX11` and `libXtst` libraries
+- Key state queries require X11 connection
+- Event polling requires pending X11 events (non-blocking)
+- Headless environments report unavailable
+
+### macOS Permissions
+
+- Accessibility permissions required for key state queries
+- If permission is unavailable, subsystem reports unavailable
+- Full implementation requires CGEventTap (future step)
+
+### Windows Behavior
+
+- Keyboard subsystem always available on Windows
+- Key state queries not yet implemented (returns -1)
+- Event polling not yet implemented (returns error)
+
+### Headless Behavior
+
+- Keyboard subsystem gracefully reports unavailable when no display/input session exists
+- No crashes or errors in headless mode
+- Key state queries return -1 (unsupported)
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Key state queries (before init, unknown key, letters, digits, function keys, modifier keys)
+- Key name mapping (known keys, unknown key, never NULL)
+- Event polling (null, before init, no event available, field reset)
+- Modifier constants
+- Key enumeration range
+
 ## Directory Structure
 
 ```
@@ -445,6 +570,16 @@ make test
 - Input shutdown (basic + idempotent + before init)
 - Legacy API (returns result, null)
 
+### Step 08 Tests (23 tests)
+- Keyboard init/shutdown (basic + idempotent)
+- Keyboard availability (before/after init)
+- Key state (before init, unknown key, valid key, letters, digits, function keys, modifier keys)
+- Key names (known keys, unknown, never NULL)
+- Event polling (null, before init, no event, field reset)
+- Keyboard shutdown (basic + idempotent + before init)
+- Modifier constants
+- Key enumeration range
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -454,4 +589,5 @@ make test
 - [x] Step 05: Display Abstraction
 - [x] Step 06: Window Management
 - [x] Step 07: Input & Mouse Abstraction
-- [ ] Steps 08-35: (future)
+- [x] Step 08: Keyboard & Input Event Abstraction
+- [ ] Steps 09-35: (future)
