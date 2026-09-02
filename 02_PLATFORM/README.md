@@ -1098,6 +1098,104 @@ Tests verify:
 - MAC address format
 - Connectivity state constants
 
+## Step 13 — Power & Battery Information Abstraction
+
+Cross-platform power source information and battery status. Read-only — no power management.
+
+### Power Lifecycle
+
+```
+ozayn_power_init()
+        ↓
+query power info
+        ↓
+ozayn_power_shutdown()
+```
+
+### Public API
+
+```c
+/* Power Lifecycle */
+ozayn_result_t ozayn_power_init(void);
+void           ozayn_power_shutdown(void);
+
+/* Power Queries */
+int            ozayn_power_is_available(void);
+ozayn_result_t ozayn_power_get_info(OzaynPowerInfo *info);
+int            ozayn_power_has_battery(void);
+int            ozayn_power_get_battery_percent(void);
+int            ozayn_power_is_charging(void);
+int            ozayn_power_is_plugged_in(void);
+```
+
+### Data Structures
+
+```c
+typedef struct {
+    int available;
+    int has_battery;
+    int battery_percent;      /* 0–100, or -1 if unknown */
+    int charging;
+    int plugged_in;
+    long long battery_remaining_seconds;  /* -1 if unknown */
+    long long battery_full_seconds;       /* -1 if unknown */
+} OzaynPowerInfo;
+
+typedef enum {
+    OZAYN_POWER_UNKNOWN = 0,
+    OZAYN_POWER_BATTERY,
+    OZAYN_POWER_CHARGING,
+    OZAYN_POWER_AC_POWER,
+    OZAYN_POWER_NO_BATTERY
+} OzaynPowerState;
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_power_shutdown()` is idempotent and safe to call multiple times
+- Battery percentage validated to 0–100 range
+- Unknown values use -1 sentinel
+- Desktop systems without batteries handled gracefully
+- No power modification, no shutdown, no sleep control
+
+### Platform Implementations
+
+- Linux: sysfs (`/sys/class/power_supply/`) for battery enumeration and status
+- macOS: Stub (requires IOKit / Core Foundation)
+- Windows: Stub (requires GetSystemPowerStatus)
+
+### Linux Implementation
+
+- Scans `/sys/class/power_supply/` directory
+- Identifies Battery type devices
+- Reads `capacity` for percentage
+- Reads `status` for charging state (Charging/Discharging/Full)
+- Detects Mains/USB adapters for AC power
+
+### Desktop/Laptop Handling
+
+- Desktop systems: `has_battery=0`, `battery_percent=-1`, `charging=0`
+- Laptop on battery: `has_battery=1`, `battery_percent=0-100`, `charging=0`, `plugged_in=0`
+- Laptop charging: `has_battery=1`, `battery_percent=0-100`, `charging=1`, `plugged_in=1`
+- Laptop full: `has_battery=1`, `battery_percent=100`, `charging=1`, `plugged_in=1`
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Power information retrieval (get info, null, before init)
+- Battery presence detection
+- Battery percentage range (0–100 or -1)
+- Charging and plugged-in state
+- Power state constants
+- Desktop/no-battery handling
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1112,4 +1210,5 @@ Tests verify:
 - [x] Step 10: Microphone Device Abstraction
 - [x] Step 11: Audio Output / Speaker Abstraction
 - [x] Step 12: Network Information & Connectivity Abstraction
-- [ ] Steps 13-35: (future)
+- [x] Step 13: Power & Battery Information Abstraction
+- [ ] Steps 14-35: (future)

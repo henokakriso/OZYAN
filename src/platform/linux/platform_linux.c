@@ -2015,6 +2015,186 @@ OzaynConnectivityState ozayn_network_is_connected(void) {
 }
 
 /* ================================================================
+ * M. Power & Battery Information Abstraction (Step 13)
+ * ================================================================
+ *
+ * Cross-platform power source information and battery status.
+ * Uses sysfs on Linux (/sys/class/power_supply/).
+ * Read-only — no power management or control.
+ */
+
+#include <dirent.h>
+
+static OzaynPowerInfo _ozayn_power = {0};
+
+static void _ozayn_power_read_sysfs(void) {
+    memset(&_ozayn_power, 0, sizeof(OzaynPowerInfo));
+    _ozayn_power.available = 0;
+    _ozayn_power.has_battery = 0;
+    _ozayn_power.battery_percent = -1;
+    _ozayn_power.charging = 0;
+    _ozayn_power.plugged_in = 0;
+    _ozayn_power.battery_remaining_seconds = -1;
+    _ozayn_power.battery_full_seconds = -1;
+
+    /* Scan /sys/class/power_supply/ for battery devices */
+    DIR *dir = opendir("/sys/class/power_supply");
+    if (!dir) return;
+
+    struct dirent *entry;
+    char battery_path[512] = {0};
+    int found_battery = 0;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+
+        char type_path[512];
+        char status_path[512];
+        snprintf(type_path, sizeof(type_path), "/sys/class/power_supply/%s/type", entry->d_name);
+        snprintf(status_path, sizeof(status_path), "/sys/class/power_supply/%s/status", entry->d_name);
+
+        /* Check if this is a Battery type */
+        FILE *f = fopen(type_path, "r");
+        if (f) {
+            char type[64] = {0};
+            if (fgets(type, sizeof(type), f)) {
+                /* Remove trailing newline */
+                size_t len = strlen(type);
+                if (len > 0 && type[len-1] == '\n') type[len-1] = '\0';
+
+                if (strcmp(type, "Battery") == 0) {
+                    found_battery =1;
+                    snprintf(battery_path, sizeof(battery_path), "/sys/class/power_supply/%s", entry->d_name);
+                }
+            }
+            fclose(f);
+        }
+
+        /* Check if this is an AC adapter */
+        if (!found_battery) {
+            f = fopen(type_path, "r");
+            if (f) {
+                char type[64] = {0};
+                if (fgets(type, sizeof(type), f)) {
+                    size_t len = strlen(type);
+                    if (len > 0 && type[len-1] == '\n') type[len-1] = '\0';
+                    if (strcmp(type, "Mains") == 0 || strcmp(type, "USB") == 0) {
+                        _ozayn_power.plugged_in = 1;
+                    }
+                }
+                fclose(f);
+            }
+        }
+    }
+    closedir(dir);
+
+    if (found_battery && battery_path[0]) {
+        _ozayn_power.has_battery = 1;
+        _ozayn_power.available = 1;
+
+        /* Read capacity (percentage) */
+        char cap_path[512];
+        snprintf(cap_path, sizeof(cap_path), "%s/capacity", battery_path);
+        FILE *f = fopen(cap_path, "r");
+        if (f) {
+            int percent = -1;
+            if (fscanf(f, "%d", &percent) == 1) {
+                if (percent >= 0 && percent <= 100) {
+                    _ozayn_power.battery_percent = percent;
+                }
+            }
+            fclose(f);
+        }
+
+        /* Read status (Charging/Discharging/Full/Not charging) */
+        char status_file[512];
+        snprintf(status_file, sizeof(status_file), "%s/status", battery_path);
+        f = fopen(status_file, "r");
+        if (f) {
+            char status[64] = {0};
+            if (fgets(status, sizeof(status), f)) {
+                size_t len = strlen(status);
+                if (len > 0 && status[len-1] == '\n') status[len-1] = '\0';
+
+                if (strcmp(status, "Charging") == 0 || strcmp(status, "Full") == 0) {
+                    _ozayn_power.charging = 1;
+                }
+            }
+            fclose(f);
+        }
+
+        /* If we found a battery, we're plugged in if charging or full */
+        if (_ozayn_power.charging) {
+            _ozayn_power.plugged_in = 1;
+        }
+
+        /* Read time to full/empty if available */
+        char energy_path[512];
+        snprintf(energy_path, sizeof(energy_path), "%s/energy_now", battery_path);
+        f = fopen(energy_path, "r");
+        if (f) {
+            long long energy_now = 0;
+            if (fscanf(f, "%lld", &energy_now) == 1) {
+                /* energy is in microwatt-hours */
+                /* We don't compute time here — would need power_now */
+            }
+            fclose(f);
+        }
+    } else {
+        /* No battery found */
+        _ozayn_power.available = 1;
+        _ozayn_power.has_battery = 0;
+    }
+}
+
+ozayn_result_t ozayn_power_init(void) {
+    if (_ozayn_power.available) return OZAYN_OK;
+
+    _ozayn_power_read_sysfs();
+
+    LOG_INFO("POWER", "Power subsystem initialized (battery=%s, percent=%d, charging=%s)",
+             _ozayn_power.has_battery ? "yes" : "no",
+             _ozayn_power.battery_percent,
+             _ozayn_power.charging ? "yes" : "no");
+
+    return OZAYN_OK;
+}
+
+void ozayn_power_shutdown(void) {
+    if (!_ozayn_power.available) return;
+    memset(&_ozayn_power, 0, sizeof(OzaynPowerInfo));
+    LOG_INFO("POWER", "Power subsystem shut down");
+}
+
+int ozayn_power_is_available(void) {
+    return _ozayn_power.available;
+}
+
+ozayn_result_t ozayn_power_get_info(OzaynPowerInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_power.available) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_power, sizeof(OzaynPowerInfo));
+    return OZAYN_OK;
+}
+
+int ozayn_power_has_battery(void) {
+    return _ozayn_power.has_battery;
+}
+
+int ozayn_power_get_battery_percent(void) {
+    return _ozayn_power.battery_percent;
+}
+
+int ozayn_power_is_charging(void) {
+    return _ozayn_power.charging;
+}
+
+int ozayn_power_is_plugged_in(void) {
+    return _ozayn_power.plugged_in;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

@@ -28,6 +28,7 @@
  *   J. Keyboard & Input Event Abstraction (Step 08)
  *   K. Audio Output / Speaker Abstraction (Step 11)
  *   L. Network Information & Connectivity Abstraction (Step 12)
+ *   M. Power & Battery Information Abstraction (Step 13)
  */
 
 /* ================================================================
@@ -876,6 +877,50 @@ int            ozayn_network_get_default_interface(void);
 /* ---- Connectivity Check ---- */
 
 OzaynConnectivityState ozayn_network_is_connected(void);
+
+/* ================================================================
+ * M. Power & Battery Information Abstraction (Step 13)
+ * ================================================================
+ *
+ * Cross-platform power source information and battery status.
+ * Read-only — no power management, no shutdown, no sleep control.
+ */
+
+/* ---- Power State ---- */
+
+typedef enum {
+    OZAYN_POWER_UNKNOWN = 0,
+    OZAYN_POWER_BATTERY,
+    OZAYN_POWER_CHARGING,
+    OZAYN_POWER_AC_POWER,
+    OZAYN_POWER_NO_BATTERY
+} OzaynPowerState;
+
+/* ---- Power Info ---- */
+
+typedef struct {
+    int available;
+    int has_battery;
+    int battery_percent;      /* 0–100, or -1 if unknown */
+    int charging;
+    int plugged_in;
+    long long battery_remaining_seconds;  /* -1 if unknown */
+    long long battery_full_seconds;       /* -1 if unknown */
+} OzaynPowerInfo;
+
+/* ---- Power Lifecycle ---- */
+
+ozayn_result_t ozayn_power_init(void);
+void           ozayn_power_shutdown(void);
+
+/* ---- Power Queries ---- */
+
+int            ozayn_power_is_available(void);
+ozayn_result_t ozayn_power_get_info(OzaynPowerInfo *info);
+int            ozayn_power_has_battery(void);
+int            ozayn_power_get_battery_percent(void);
+int            ozayn_power_is_charging(void);
+int            ozayn_power_is_plugged_in(void);
 
 /* ================================================================
  * Platform Lifecycle

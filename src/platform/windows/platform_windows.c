@@ -966,6 +966,56 @@ OzaynConnectivityState ozayn_network_is_connected(void) {
 }
 
 /* ================================================================
+ * M. Power & Battery Information Abstraction (Step 13)
+ * ================================================================
+ *
+ * Windows stub — requires Win32 GetSystemPowerStatus API.
+ */
+
+static OzaynPowerInfo _ozayn_power = {0};
+
+ozayn_result_t ozayn_power_init(void) {
+    if (_ozayn_power.available) return OZAYN_OK;
+    memset(&_ozayn_power, 0, sizeof(OzaynPowerInfo));
+    _ozayn_power.available = 1;
+    LOG_INFO("POWER", "Power subsystem initialized (stub, battery=unknown)");
+    return OZAYN_OK;
+}
+
+void ozayn_power_shutdown(void) {
+    if (!_ozayn_power.available) return;
+    memset(&_ozayn_power, 0, sizeof(OzaynPowerInfo));
+    LOG_INFO("POWER", "Power subsystem shut down");
+}
+
+int ozayn_power_is_available(void) {
+    return _ozayn_power.available;
+}
+
+ozayn_result_t ozayn_power_get_info(OzaynPowerInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_power.available) return OZAYN_ERR;
+    memcpy(info, &_ozayn_power, sizeof(OzaynPowerInfo));
+    return OZAYN_OK;
+}
+
+int ozayn_power_has_battery(void) {
+    return _ozayn_power.has_battery;
+}
+
+int ozayn_power_get_battery_percent(void) {
+    return _ozayn_power.battery_percent;
+}
+
+int ozayn_power_is_charging(void) {
+    return _ozayn_power.charging;
+}
+
+int ozayn_power_is_plugged_in(void) {
+    return _ozayn_power.plugged_in;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *
