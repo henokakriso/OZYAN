@@ -133,6 +133,53 @@ void           ozayn_process_close(OzaynProcess *proc);
 - Linux/macOS: POSIX (`fork`, `execvp`, `waitpid`, `kill`, pipes)
 - Windows: Win32 (`CreateProcess`, `WaitForSingleObject`, `TerminateProcess`)
 
+## Step 05 — Display Abstraction
+
+Cross-platform display discovery and information retrieval.
+
+### Public API
+
+```c
+typedef struct {
+    uint32_t index;
+    char     name[OZAYN_MAX_DISPLAY_NAME];
+    int32_t  x;
+    int32_t  y;
+    uint32_t width;
+    uint32_t height;
+    uint32_t refresh_hz;
+    int      is_primary;
+} OzaynDisplayInfo;
+
+ozayn_result_t ozayn_display_init(void);
+void           ozayn_display_shutdown(void);
+int            ozayn_display_is_available(void);
+uint32_t       ozayn_display_count(void);
+ozayn_result_t ozayn_display_get(uint32_t index, OzaynDisplayInfo *info);
+ozayn_result_t ozayn_display_get_primary(OzaynDisplayInfo *info);
+ozayn_result_t ozayn_display_refresh(void);
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_display_shutdown()` is idempotent and safe to call multiple times
+- Works in headless environments (returns count=0, available=0)
+- No screen capture, no display modification
+- Informational only — no side effects
+
+### Platform Implementations
+
+- Linux: xrandr parsing with fallback to single display
+- macOS: system_profiler parsing with fallback to built-in display
+- Windows: Win32 (`EnumDisplayDevices`, `EnumDisplaySettings`)
+
+### Headless Behavior
+
+- Display subsystem gracefully reports unavailable when no displays exist
+- Display count returns 0 in headless environments
+- No crashes or errors in headless mode
+
 ## Directory Structure
 
 ```
@@ -180,10 +227,22 @@ make test
 - Error handling: NULL, empty, invalid exec, zero pid
 - Multiple concurrent processes
 
+### Step 05 Tests (26 tests)
+- Display init/shutdown (basic + idempotent)
+- Display availability (before/after init)
+- Display count (before/after init, matches availability)
+- Display get by index (valid, invalid, before init)
+- Primary display (get, null, before init)
+- Display info fields (name, dimensions, index, primary flag)
+- Display refresh (basic + before init)
+- Multiple displays query
+- Legacy display API compatibility
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
 - [x] Step 02: System Information & Hardware Identification
 - [x] Step 03: Filesystem Abstraction
 - [x] Step 04: Process Management Abstraction
-- [ ] Steps 05-35: (future)
+- [x] Step 05: Display Abstraction
+- [ ] Steps 06-35: (future)

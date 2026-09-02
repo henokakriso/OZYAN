@@ -444,8 +444,128 @@ ozayn_result_t ozayn_display_info(ozayn_display_info_t *info) {
 }
 
 /* ================================================================
- * E. Network
+ * D2. Cross-Platform Display Management
  * ================================================================ */
+
+static OzaynDisplayState _ozayn_display = {0};
+
+static int _ozayn_display_discover(void) {
+    DISPLAY_DEVICEA dd;
+    dd.cb = sizeof(dd);
+    DEVMODEA dm;
+    uint32_t count = 0;
+    int primary_done = 0;
+
+    for (DWORD i = 0; EnumDisplayDevicesA(NULL, i, &dd, 0) && count < OZAYN_MAX_DISPLAYS; i++) {
+        if (!(dd.StateFlags & DISPLAY_DEVICE_ACTIVE)) continue;
+
+        /* Check if primary */
+        int is_primary = (dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) ? 1 : 0;
+        if (is_primary) primary_done = 1;
+
+        OzaynDisplayInfo *d = &_ozayn_display.displays[count];
+        memset(d, 0, sizeof(OzaynDisplayInfo));
+        d->index = count;
+        d->is_primary = is_primary;
+
+        /* Extract device name */
+        strncpy(d->name, dd.DeviceName, OZAYN_MAX_DISPLAY_NAME - 1);
+
+        /* Get display settings */
+        ZeroMemory(&dm, sizeof(dm));
+        dm.dmSize = sizeof(dm);
+        if (EnumDisplaySettingsA(dd.DeviceName, ENUM_CURRENT_SETTINGS, &dm)) {
+            d->width = dm.dmPelsWidth;
+            d->height = dm.dmPelsHeight;
+            d->refresh_hz = dm.dmDisplayFrequency;
+            d->x = (int32_t)dm.dmPosition.x;
+            d->y = (int32_t)dm.dmPosition.y;
+        } else {
+            d->width = 1920;
+            d->height = 1080;
+            d->refresh_hz = 60;
+        }
+
+        count++;
+    }
+
+    /* Fallback if no displays found */
+    if (count == 0) {
+        OzaynDisplayInfo *d = &_ozayn_display.displays[0];
+        memset(d, 0, sizeof(OzaynDisplayInfo));
+        d->index = 0;
+        d->is_primary = 1;
+        d->width = 1920;
+        d->height = 1080;
+        d->refresh_hz = 60;
+        d->x = 0;
+        d->y = 0;
+        strncpy(d->name, "Default", OZAYN_MAX_DISPLAY_NAME - 1);
+        count = 1;
+        primary_done = 1;
+        _ozayn_display.primary_index = 0;
+    }
+
+    /* If no primary found, mark first as primary */
+    if (!primary_done && count > 0) {
+        _ozayn_display.displays[0].is_primary = 1;
+        _ozayn_display.primary_index = 0;
+    }
+
+    _ozayn_display.count = count;
+    _ozayn_display.available = (count > 0) ? 1 : 0;
+
+    return (int)count;
+}
+
+ozayn_result_t ozayn_display_init(void) {
+    if (_ozayn_display.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_display, 0, sizeof(OzaynDisplayState));
+    _ozayn_display.primary_index = -1;
+
+    _ozayn_display_discover();
+    _ozayn_display.initialized = 1;
+
+    return OZAYN_OK;
+}
+
+void ozayn_display_shutdown(void) {
+    if (!_ozayn_display.initialized) return;
+    memset(&_ozayn_display, 0, sizeof(OzaynDisplayState));
+    _ozayn_display.primary_index = -1;
+}
+
+int ozayn_display_is_available(void) {
+    return _ozayn_display.available;
+}
+
+uint32_t ozayn_display_count(void) {
+    if (!_ozayn_display.initialized) return 0;
+    return _ozayn_display.count;
+}
+
+ozayn_result_t ozayn_display_get(uint32_t index, OzaynDisplayInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_display.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_display.count) return OZAYN_ERR;
+    memcpy(info, &_ozayn_display.displays[index], sizeof(OzaynDisplayInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_display_get_primary(OzaynDisplayInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_display.initialized) return OZAYN_ERR;
+    if (_ozayn_display.primary_index < 0) return OZAYN_ERR;
+    memcpy(info, &_ozayn_display.displays[_ozayn_display.primary_index], sizeof(OzaynDisplayInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_display_refresh(void) {
+    if (!_ozayn_display.initialized) return OZAYN_ERR;
+    _ozayn_display_discover();
+    return OZAYN_OK;
+}
 
 ozayn_result_t ozayn_network_info(ozayn_network_info_t *info) {
     if (!info) return OZAYN_ERR_NULL;

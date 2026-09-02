@@ -462,8 +462,156 @@ ozayn_result_t ozayn_display_info(ozayn_display_info_t *info) {
 }
 
 /* ================================================================
- * E. Network
+ * D2. Cross-Platform Display Management
  * ================================================================ */
+
+static OzaynDisplayState _ozayn_display = {0};
+
+static int _ozayn_display_discover(void) {
+    /* macOS: use system_profiler to get display info */
+    FILE *f = popen("system_profiler SPDisplaysDataType 2>/dev/null", "r");
+    if (!f) {
+        /* Fallback: assume one display */
+        OzaynDisplayInfo *d = &_ozayn_display.displays[0];
+        memset(d, 0, sizeof(OzaynDisplayInfo));
+        d->index = 0;
+        d->is_primary = 1;
+        d->width = 2560;
+        d->height = 1440;
+        d->refresh_hz = 60;
+        d->x = 0;
+        d->y = 0;
+        strncpy(d->name, "Built-in Display", OZAYN_MAX_DISPLAY_NAME - 1);
+        _ozayn_display.count = 1;
+        _ozayn_display.primary_index = 0;
+        _ozayn_display.available = 1;
+        return 1;
+    }
+
+    char line[512];
+    uint32_t count = 0;
+    int current_display = -1;
+
+    while (fgets(line, sizeof(line), f) && count < OZAYN_MAX_DISPLAYS) {
+        /* Look for display type headers */
+        if (strstr(line, "Display Type:") || strstr(line, "Chipset Model:")) {
+            count++;
+            current_display = count - 1;
+
+            OzaynDisplayInfo *d = &_ozayn_display.displays[current_display];
+            memset(d, 0, sizeof(OzaynDisplayInfo));
+            d->index = (uint32_t)current_display;
+            d->is_primary = (current_display == 0) ? 1 : 0;
+            d->refresh_hz = 60;
+            d->x = 0;
+            d->y = 0;
+            strncpy(d->name, "Display", OZAYN_MAX_DISPLAY_NAME - 1);
+
+            /* Extract display type name */
+            char *colon = strchr(line, ':');
+            if (colon) {
+                colon++;
+                while (*colon == ' ') colon++;
+                size_t len = strlen(colon);
+                while (len > 0 && (colon[len-1] == '\n' || colon[len-1] == '\r')) len--;
+                if (len >= OZAYN_MAX_DISPLAY_NAME) len = OZAYN_MAX_DISPLAY_NAME - 1;
+                strncpy(d->name, colon, len);
+                d->name[len] = '\0';
+            }
+        }
+
+        /* Parse resolution */
+        if (current_display >= 0 && strstr(line, "Resolution:")) {
+            OzaynDisplayInfo *d = &_ozayn_display.displays[current_display];
+            int w = 0, h = 0;
+            if (sscanf(line, "Resolution: %d x %d", &w, &h) == 2) {
+                d->width = (uint32_t)w;
+                d->height = (uint32_t)h;
+            }
+        }
+    }
+
+    pclose(f);
+
+    /* Set defaults for displays without resolution */
+    for (uint32_t i = 0; i < count; i++) {
+        if (_ozayn_display.displays[i].width == 0) {
+            _ozayn_display.displays[i].width = 2560;
+            _ozayn_display.displays[i].height = 1440;
+        }
+    }
+
+    /* Fallback if nothing found */
+    if (count == 0) {
+        OzaynDisplayInfo *d = &_ozayn_display.displays[0];
+        memset(d, 0, sizeof(OzaynDisplayInfo));
+        d->index = 0;
+        d->is_primary = 1;
+        d->width = 2560;
+        d->height = 1440;
+        d->refresh_hz = 60;
+        d->x = 0;
+        d->y = 0;
+        strncpy(d->name, "Built-in Display", OZAYN_MAX_DISPLAY_NAME - 1);
+        count = 1;
+        _ozayn_display.primary_index = 0;
+    }
+
+    _ozayn_display.count = count;
+    _ozayn_display.available = (count > 0) ? 1 : 0;
+    if (_ozayn_display.primary_index < 0) _ozayn_display.primary_index = 0;
+
+    return (int)count;
+}
+
+ozayn_result_t ozayn_display_init(void) {
+    if (_ozayn_display.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_display, 0, sizeof(OzaynDisplayState));
+    _ozayn_display.primary_index = -1;
+
+    _ozayn_display_discover();
+    _ozayn_display.initialized = 1;
+
+    return OZAYN_OK;
+}
+
+void ozayn_display_shutdown(void) {
+    if (!_ozayn_display.initialized) return;
+    memset(&_ozayn_display, 0, sizeof(OzaynDisplayState));
+    _ozayn_display.primary_index = -1;
+}
+
+int ozayn_display_is_available(void) {
+    return _ozayn_display.available;
+}
+
+uint32_t ozayn_display_count(void) {
+    if (!_ozayn_display.initialized) return 0;
+    return _ozayn_display.count;
+}
+
+ozayn_result_t ozayn_display_get(uint32_t index, OzaynDisplayInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_display.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_display.count) return OZAYN_ERR;
+    memcpy(info, &_ozayn_display.displays[index], sizeof(OzaynDisplayInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_display_get_primary(OzaynDisplayInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_display.initialized) return OZAYN_ERR;
+    if (_ozayn_display.primary_index < 0) return OZAYN_ERR;
+    memcpy(info, &_ozayn_display.displays[_ozayn_display.primary_index], sizeof(OzaynDisplayInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_display_refresh(void) {
+    if (!_ozayn_display.initialized) return OZAYN_ERR;
+    _ozayn_display_discover();
+    return OZAYN_OK;
+}
 
 ozayn_result_t ozayn_network_info(ozayn_network_info_t *info) {
     if (!info) return OZAYN_ERR_NULL;

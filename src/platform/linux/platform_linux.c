@@ -456,6 +456,161 @@ ozayn_result_t ozayn_display_info(ozayn_display_info_t *info) {
 }
 
 /* ================================================================
+ * D2. Cross-Platform Display Management
+ * ================================================================ */
+
+static OzaynDisplayState _ozayn_display = {0};
+
+static int _ozayn_display_parse_xrandr(void) {
+    FILE *f = popen("xrandr --query 2>/dev/null", "r");
+    if (!f) return 0;
+
+    char line[512];
+    uint32_t count = 0;
+    int primary_done = 0;
+
+    while (fgets(line, sizeof(line), f) && count < OZAYN_MAX_DISPLAYS) {
+        /* Look for lines with " connected" */
+        char *conn = strstr(line, " connected");
+        if (!conn) continue;
+
+        /* Check if primary */
+        int is_primary = 0;
+        if (strstr(line, " primary")) {
+            is_primary = 1;
+            primary_done = 1;
+        }
+
+        /* Extract name (everything before " connected") */
+        char *name_end = strstr(line, " connected");
+        if (!name_end) continue;
+
+        size_t name_len = (size_t)(name_end - line);
+        if (name_len >= OZAYN_MAX_DISPLAY_NAME) name_len = OZAYN_MAX_DISPLAY_NAME - 1;
+
+        OzaynDisplayInfo *d = &_ozayn_display.displays[count];
+        memset(d, 0, sizeof(OzaynDisplayInfo));
+        d->index = count;
+        d->is_primary = is_primary;
+        strncpy(d->name, line, name_len);
+        d->name[name_len] = '\0';
+
+        /* Try to parse resolution from the same line or next part */
+        /* Format: "HDMI-1 connected primary 1920x1080+0+0" */
+        char *res_start = strchr(conn, ' ');
+        if (res_start) {
+            int w = 0, h = 0, x = 0, y = 0;
+            if (sscanf(res_start, " %dx%d+%d+%d", &w, &h, &x, &y) == 4) {
+                d->width = (uint32_t)w;
+                d->height = (uint32_t)h;
+                d->x = (int32_t)x;
+                d->y = (int32_t)y;
+            }
+        }
+
+        /* Default values if not parsed */
+        if (d->width == 0) d->width = 1920;
+        if (d->height == 0) d->height = 1080;
+        d->refresh_hz = 60;
+
+        count++;
+    }
+
+    pclose(f);
+
+    /* If no primary found, mark first display as primary */
+    if (!primary_done && count > 0) {
+        _ozayn_display.displays[0].is_primary = 1;
+        _ozayn_display.primary_index = 0;
+    }
+
+    return (int)count;
+}
+
+static int _ozayn_display_discover(void) {
+    int count = _ozayn_display_parse_xrandr();
+
+    /* Fallback if xrandr not available */
+    if (count == 0) {
+        OzaynDisplayInfo *d = &_ozayn_display.displays[0];
+        memset(d, 0, sizeof(OzaynDisplayInfo));
+        d->index = 0;
+        d->is_primary = 1;
+        d->width = 1920;
+        d->height = 1080;
+        d->refresh_hz = 60;
+        d->x = 0;
+        d->y = 0;
+        strncpy(d->name, "Default", OZAYN_MAX_DISPLAY_NAME - 1);
+        count = 1;
+        _ozayn_display.primary_index = 0;
+    }
+
+    _ozayn_display.count = (uint32_t)count;
+    _ozayn_display.available = (count > 0) ? 1 : 0;
+
+    return count;
+}
+
+ozayn_result_t ozayn_display_init(void) {
+    if (_ozayn_display.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_display, 0, sizeof(OzaynDisplayState));
+    _ozayn_display.primary_index = -1;
+
+    _ozayn_display_discover();
+    _ozayn_display.initialized = 1;
+
+    LOG_INFO("DISPLAY", "Display subsystem initialized (count=%u, available=%s)",
+             _ozayn_display.count, _ozayn_display.available ? "yes" : "no");
+
+    return OZAYN_OK;
+}
+
+void ozayn_display_shutdown(void) {
+    if (!_ozayn_display.initialized) return;
+
+    memset(&_ozayn_display, 0, sizeof(OzaynDisplayState));
+    _ozayn_display.primary_index = -1;
+
+    LOG_INFO("DISPLAY", "Display subsystem shut down");
+}
+
+int ozayn_display_is_available(void) {
+    return _ozayn_display.available;
+}
+
+uint32_t ozayn_display_count(void) {
+    if (!_ozayn_display.initialized) return 0;
+    return _ozayn_display.count;
+}
+
+ozayn_result_t ozayn_display_get(uint32_t index, OzaynDisplayInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_display.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_display.count) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_display.displays[index], sizeof(OzaynDisplayInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_display_get_primary(OzaynDisplayInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_display.initialized) return OZAYN_ERR;
+    if (_ozayn_display.primary_index < 0) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_display.displays[_ozayn_display.primary_index], sizeof(OzaynDisplayInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_display_refresh(void) {
+    if (!_ozayn_display.initialized) return OZAYN_ERR;
+
+    _ozayn_display_discover();
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * E. Network
  * ================================================================ */
 

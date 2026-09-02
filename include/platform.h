@@ -192,6 +192,7 @@ const char *ozayn_fs_config_dir(void);
  * ================================================================ */
 
 #define OZAYN_MAX_DISPLAY_NAME 128
+#define OZAYN_MAX_DISPLAYS     16
 
 typedef struct {
     uint32_t x;
@@ -209,6 +210,48 @@ typedef struct {
 
 /* Query display information. Returns OZAYN_OK on success. */
 ozayn_result_t ozayn_display_info(ozayn_display_info_t *info);
+
+/* ---- Cross-platform display management ---- */
+
+typedef struct {
+    uint32_t index;
+    char     name[OZAYN_MAX_DISPLAY_NAME];
+    int32_t  x;
+    int32_t  y;
+    uint32_t width;
+    uint32_t height;
+    uint32_t refresh_hz;
+    int      is_primary;
+} OzaynDisplayInfo;
+
+typedef struct {
+    int              initialized;
+    int              available;
+    uint32_t         count;
+    OzaynDisplayInfo displays[OZAYN_MAX_DISPLAYS];
+    int              primary_index;
+} OzaynDisplayState;
+
+/* Initialize display subsystem. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_display_init(void);
+
+/* Shutdown display subsystem. Safe to call multiple times. */
+void ozayn_display_shutdown(void);
+
+/* Check if display subsystem is available. Returns 1 if available, 0 otherwise. */
+int ozayn_display_is_available(void);
+
+/* Get number of connected displays. Returns count or 0 if unavailable. */
+uint32_t ozayn_display_count(void);
+
+/* Get display info by index. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_display_get(uint32_t index, OzaynDisplayInfo *info);
+
+/* Get primary display info. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_display_get_primary(OzaynDisplayInfo *info);
+
+/* Refresh display list. Returns OZAYN_OK on success. */
+ozayn_result_t ozayn_display_refresh(void);
 
 /* ================================================================
  * E. Network
