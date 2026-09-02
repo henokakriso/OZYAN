@@ -29,6 +29,7 @@
  *   K. Audio Output / Speaker Abstraction (Step 11)
  *   L. Network Information & Connectivity Abstraction (Step 12)
  *   M. Power & Battery Information Abstraction (Step 13)
+ *   N. Notification System Abstraction (Step 14)
  */
 
 /* ================================================================
@@ -921,6 +922,40 @@ int            ozayn_power_has_battery(void);
 int            ozayn_power_get_battery_percent(void);
 int            ozayn_power_is_charging(void);
 int            ozayn_power_is_plugged_in(void);
+
+/* ================================================================
+ * N. Notification System Abstraction (Step 14)
+ * ================================================================
+ *
+ * Cross-platform native desktop notification display.
+ * Uses the operating system's native notification mechanism.
+ * No notification history, no GUI windows, no remote notifications.
+ */
+
+#define OZAYN_MAX_NOTIF_TITLE    256
+#define OZAYN_MAX_NOTIF_MESSAGE  1024
+#define OZAYN_MAX_NOTIF_APP_NAME 256
+
+/* ---- Notification ---- */
+
+typedef struct {
+    char title[OZAYN_MAX_NOTIF_TITLE];
+    char message[OZAYN_MAX_NOTIF_MESSAGE];
+    char application_name[OZAYN_MAX_NOTIF_APP_NAME];
+} OzaynNotification;
+
+/* ---- Notification Lifecycle ---- */
+
+ozayn_result_t ozayn_notification_init(void);
+void           ozayn_notification_shutdown(void);
+
+/* ---- Notification Queries ---- */
+
+int            ozayn_notification_is_available(void);
+
+/* ---- Notification Send ---- */
+
+ozayn_result_t ozayn_notification_send(const OzaynNotification *notification);
 
 /* ================================================================
  * Platform Lifecycle

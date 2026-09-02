@@ -2195,6 +2195,69 @@ int ozayn_power_is_plugged_in(void) {
 }
 
 /* ================================================================
+ * N. Notification System Abstraction (Step 14)
+ * ================================================================
+ *
+ * Cross-platform native desktop notification display.
+ * Uses notify-send on Linux for desktop notification delivery.
+ * No notification history, no GUI windows, no remote notifications.
+ */
+
+static int _ozayn_notif_initialized = 0;
+static int _ozayn_notif_available = 0;
+
+static int _ozayn_notif_check_available(void) {
+    /* Check if notify-send is available */
+    int ret = system("which notify-send >/dev/null 2>&1");
+    return (ret == 0) ? 1 : 0;
+}
+
+ozayn_result_t ozayn_notification_init(void) {
+    if (_ozayn_notif_initialized) return OZAYN_OK;
+
+    _ozayn_notif_available = _ozayn_notif_check_available();
+    _ozayn_notif_initialized = 1;
+
+    LOG_INFO("NOTIFY", "Notification subsystem initialized (available=%s)",
+             _ozayn_notif_available ? "yes" : "no");
+
+    return OZAYN_OK;
+}
+
+void ozayn_notification_shutdown(void) {
+    if (!_ozayn_notif_initialized) return;
+    _ozayn_notif_initialized = 0;
+    _ozayn_notif_available = 0;
+    LOG_INFO("NOTIFY", "Notification subsystem shut down");
+}
+
+int ozayn_notification_is_available(void) {
+    return _ozayn_notif_available;
+}
+
+ozayn_result_t ozayn_notification_send(const OzaynNotification *notification) {
+    if (!notification) return OZAYN_ERR_NULL;
+    if (!_ozayn_notif_initialized) return OZAYN_ERR;
+    if (!_ozayn_notif_available) return OZAYN_ERR;
+
+    /* Validate title is not empty */
+    if (notification->title[0] == '\0') return OZAYN_ERR;
+
+    /* Build command: notify-send "title" "message" */
+    char cmd[2048];
+    snprintf(cmd, sizeof(cmd), "notify-send \"%s\" \"%s\" 2>/dev/null",
+             notification->title, notification->message);
+
+    int ret = system(cmd);
+    if (ret != 0) {
+        LOG_WARN("NOTIFY", "Failed to send notification");
+        return OZAYN_ERR;
+    }
+
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

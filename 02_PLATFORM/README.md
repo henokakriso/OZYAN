@@ -1196,6 +1196,99 @@ Tests verify:
 - Power state constants
 - Desktop/no-battery handling
 
+## Step 14 — Notification System Abstraction
+
+Cross-platform native desktop notification display using the operating system's native notification mechanism.
+
+### Notification Lifecycle
+
+```
+ozayn_notification_init()
+        ↓
+check availability
+        ↓
+ozayn_notification_send()
+        ↓
+ozayn_notification_shutdown()
+```
+
+### Public API
+
+```c
+/* Notification Lifecycle */
+ozayn_result_t ozayn_notification_init(void);
+void           ozayn_notification_shutdown(void);
+
+/* Notification Queries */
+int            ozayn_notification_is_available(void);
+
+/* Notification Send */
+ozayn_result_t ozayn_notification_send(const OzaynNotification *notification);
+```
+
+### Data Structures
+
+```c
+typedef struct {
+    char title[256];
+    char message[1024];
+    char application_name[256];
+} OzaynNotification;
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_notification_shutdown()` is idempotent and safe to call multiple times
+- Empty title is rejected
+- Empty message is allowed (some notifications show title only)
+- Oversized strings handled gracefully (truncation)
+- No notification history, no GUI windows, no remote notifications
+- No command injection — never uses `system()` with user content
+
+### Platform Implementations
+
+- Linux: `notify-send` command-line tool (standard on most desktop environments)
+- macOS: Stub (requires UserNotifications framework)
+- Windows: Stub (requires Toast Notification API)
+
+### Linux Implementation
+
+- Checks for `notify-send` availability via `which`
+- Sends notifications via `notify-send "title" "message"`
+- Works across GNOME, KDE, XFCE, and other desktop environments
+- Headless systems: notification unavailable (graceful)
+
+### Headless Behavior
+
+- Notification subsystem reports unavailable on headless systems
+- `send()` returns error when unavailable
+- No crashes or errors in headless mode
+
+### Security
+
+- Title and message treated as ordinary text
+- No shell command construction from notification content
+- No `system()` calls with user-provided strings
+- No credential exposure in notifications
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Valid notification send (accepts failure on headless)
+- Empty title rejection
+- Empty message handling
+- NULL notification rejection
+- Oversized title/message handling
+- Send after shutdown rejection
+- Shutdown before init
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1211,4 +1304,5 @@ Tests verify:
 - [x] Step 11: Audio Output / Speaker Abstraction
 - [x] Step 12: Network Information & Connectivity Abstraction
 - [x] Step 13: Power & Battery Information Abstraction
-- [ ] Steps 14-35: (future)
+- [x] Step 14: Notification System Abstraction
+- [ ] Steps 15-35: (future)

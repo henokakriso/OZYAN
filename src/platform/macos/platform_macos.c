@@ -1059,6 +1059,41 @@ int ozayn_power_is_plugged_in(void) {
 }
 
 /* ================================================================
+ * N. Notification System Abstraction (Step 14)
+ * ================================================================
+ *
+ * macOS stub — requires UserNotifications framework for full
+ * implementation.
+ */
+
+static int _ozayn_notif_initialized = 0;
+static int _ozayn_notif_available = 0;
+
+ozayn_result_t ozayn_notification_init(void) {
+    if (_ozayn_notif_initialized) return OZAYN_OK;
+    _ozayn_notif_initialized = 1;
+    _ozayn_notif_available = 0;
+    LOG_INFO("NOTIFY", "Notification subsystem initialized (stub, available=no)");
+    return OZAYN_OK;
+}
+
+void ozayn_notification_shutdown(void) {
+    if (!_ozayn_notif_initialized) return;
+    _ozayn_notif_initialized = 0;
+    _ozayn_notif_available = 0;
+    LOG_INFO("NOTIFY", "Notification subsystem shut down");
+}
+
+int ozayn_notification_is_available(void) {
+    return _ozayn_notif_available;
+}
+
+ozayn_result_t ozayn_notification_send(const OzaynNotification *notification) {
+    (void)notification;
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *
