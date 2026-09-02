@@ -998,6 +998,106 @@ Tests verify:
 - Buffer validation (empty, no data, unknown format, insufficient data)
 - Audio format constants
 
+## Step 12 — Network Information & Connectivity Abstraction
+
+Cross-platform network interface enumeration, address discovery, and basic connectivity checking.
+
+### Network Lifecycle
+
+```
+ozayn_network_init()
+        ↓
+enumerate interfaces
+        ↓
+query interfaces
+        ↓
+ozayn_network_shutdown()
+```
+
+### Public API
+
+```c
+/* Network Lifecycle */
+ozayn_result_t ozayn_network_init(void);
+void           ozayn_network_shutdown(void);
+
+/* Network Queries */
+int            ozayn_network_is_available(void);
+unsigned int   ozayn_network_get_interface_count(void);
+ozayn_result_t ozayn_network_get_interface_info(unsigned int index, OzaynNetworkInterfaceInfo *info);
+int            ozayn_network_get_default_interface(void);
+
+/* Connectivity Check */
+OzaynConnectivityState ozayn_network_is_connected(void);
+```
+
+### Data Structures
+
+```c
+typedef struct {
+    int index;
+    char name[64];
+    char ipv4[64];
+    char ipv6[128];
+    char mac[32];
+    int is_up;
+    int is_loopback;
+} OzaynNetworkInterfaceInfo;
+
+typedef enum {
+    OZAYN_CONNECTIVITY_UNKNOWN = 0,
+    OZAYN_CONNECTIVITY_DISCONNECTED,
+    OZAYN_CONNECTIVITY_CONNECTED
+} OzaynConnectivityState;
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_network_shutdown()` is idempotent and safe to call multiple times
+- Invalid interface indexes are rejected
+- Works in headless/no-network environments (count=0, available=0)
+- No packet sniffing, no port scanning, no traffic monitoring
+- No network configuration modification
+
+### Platform Implementations
+
+- Linux: `getifaddrs` + `ioctl` for interface enumeration and MAC discovery
+- macOS: Stub (requires SystemConfiguration / IOKit)
+- Windows: Stub (requires IP Helper API)
+
+### Linux Implementation
+
+- Enumerates interfaces via `getifaddrs`
+- Extracts IPv4/IPv6 addresses via `inet_ntop`
+- Detects UP/loopback flags via `ifa_flags`
+- Gets MAC address via `AF_PACKET` / `sockaddr_ll`
+- Default interface: first non-loopback UP interface with IPv4
+
+### Connectivity Detection
+
+- Checks for any non-loopback UP interface with an IPv4 or IPv6 address
+- Returns CONNECTED if found, DISCONNECTED if interfaces exist but none connected
+- Returns UNKNOWN if not initialized or no interfaces exist
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Interface enumeration (count before/after init, get info valid/invalid/null/before init)
+- IPv4/IPv6 format validation
+- Loopback detection
+- Interface state (UP/loopback flags)
+- Connectivity status (UNKNOWN/DISCONNECTED/CONNECTED)
+- Default interface detection
+- MAC address format
+- Connectivity state constants
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1011,4 +1111,5 @@ Tests verify:
 - [x] Step 09: Camera Device Abstraction
 - [x] Step 10: Microphone Device Abstraction
 - [x] Step 11: Audio Output / Speaker Abstraction
-- [ ] Steps 12-35: (future)
+- [x] Step 12: Network Information & Connectivity Abstraction
+- [ ] Steps 13-35: (future)

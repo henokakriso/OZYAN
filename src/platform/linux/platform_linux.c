@@ -1867,6 +1867,154 @@ ozayn_result_t ozayn_audio_output_stop(void) {
 }
 
 /* ================================================================
+ * L. Network Information & Connectivity Abstraction (Step 12)
+ * ================================================================
+ *
+ * Cross-platform network interface enumeration, address discovery,
+ * and basic connectivity checking. Uses getifaddrs + ioctl on Linux.
+ * This is information only — no packet capture or port scanning.
+ */
+
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <ifaddrs.h>
+#include <netdb.h>
+#include <linux/if_packet.h>
+
+static OzaynNetworkState _ozayn_net = {0};
+static OzaynNetworkInterfaceInfo _ozayn_net_ifaces[OZAYN_MAX_NETWORK_IFACES];
+
+static void _ozayn_net_enumerate(void) {
+    struct ifaddrs *ifaddr, *ifa;
+    _ozayn_net.count = 0;
+    _ozayn_net.has_default = 0;
+    _ozayn_net.default_index = -1;
+
+    if (getifaddrs(&ifaddr) == -1) return;
+
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+    for (ifa = ifaddr; ifa != NULL && _ozayn_net.count < OZAYN_MAX_NETWORK_IFACES; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) continue;
+
+        OzaynNetworkInterfaceInfo *info = &_ozayn_net_ifaces[_ozayn_net.count];
+        memset(info, 0, sizeof(OzaynNetworkInterfaceInfo));
+        info->index = (int)_ozayn_net.count;
+
+        /* Copy name */
+        strncpy(info->name, ifa->ifa_name, OZAYN_MAX_IFACE_NAME_LEN - 1);
+
+        /* Flags */
+        info->is_up = (ifa->ifa_flags & IFF_UP) ? 1 : 0;
+        info->is_loopback = (ifa->ifa_flags & IFF_LOOPBACK) ? 1 : 0;
+
+        /* IPv4 */
+        if (ifa->ifa_addr->sa_family == AF_INET) {
+            struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+            inet_ntop(AF_INET, &sa->sin_addr, info->ipv4, OZAYN_MAX_IPV4_LEN);
+        }
+        /* IPv6 */
+        else if (ifa->ifa_addr->sa_family == AF_INET6) {
+            struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)ifa->ifa_addr;
+            inet_ntop(AF_INET6, &sa6->sin6_addr, info->ipv6, OZAYN_MAX_IPV6_LEN);
+        }
+
+        /* MAC address via ioctl */
+        if (sock >= 0 && ifa->ifa_addr && ifa->ifa_addr->sa_family == AF_PACKET) {
+            struct sockaddr_ll *sll = (struct sockaddr_ll *)ifa->ifa_addr;
+            if (sll->sll_halen == 6) {
+                snprintf(info->mac, OZAYN_MAX_MAC_LEN, "%02x:%02x:%02x:%02x:%02x:%02x",
+                         sll->sll_addr[0], sll->sll_addr[1], sll->sll_addr[2],
+                         sll->sll_addr[3], sll->sll_addr[4], sll->sll_addr[5]);
+            }
+        }
+
+        /* Track first non-loopback UP interface as default */
+        if (!_ozayn_net.has_default && info->is_up && !info->is_loopback && info->ipv4[0]) {
+            _ozayn_net.has_default = 1;
+            _ozayn_net.default_index = info->index;
+        }
+
+        _ozayn_net.count++;
+    }
+
+    if (sock >= 0) close(sock);
+    freeifaddrs(ifaddr);
+}
+
+ozayn_result_t ozayn_network_init(void) {
+    if (_ozayn_net.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_net, 0, sizeof(OzaynNetworkState));
+    memset(_ozayn_net_ifaces, 0, sizeof(_ozayn_net_ifaces));
+
+    _ozayn_net_enumerate();
+    _ozayn_net.available = (_ozayn_net.count > 0) ? 1 : 0;
+    _ozayn_net.initialized = 1;
+
+    LOG_INFO("NETWORK", "Network subsystem initialized (interfaces=%u, available=%s)",
+             _ozayn_net.count, _ozayn_net.available ? "yes" : "no");
+
+    return OZAYN_OK;
+}
+
+void ozayn_network_shutdown(void) {
+    if (!_ozayn_net.initialized) return;
+    memset(&_ozayn_net, 0, sizeof(OzaynNetworkState));
+    LOG_INFO("NETWORK", "Network subsystem shut down");
+}
+
+int ozayn_network_is_available(void) {
+    return _ozayn_net.available;
+}
+
+unsigned int ozayn_network_get_interface_count(void) {
+    if (!_ozayn_net.initialized) return 0;
+    return _ozayn_net.count;
+}
+
+ozayn_result_t ozayn_network_get_interface_info(unsigned int index, OzaynNetworkInterfaceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_net.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_net.count) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_net_ifaces[index], sizeof(OzaynNetworkInterfaceInfo));
+    return OZAYN_OK;
+}
+
+int ozayn_network_get_default_interface(void) {
+    if (!_ozayn_net.initialized) return -1;
+    return _ozayn_net.default_index;
+}
+
+OzaynConnectivityState ozayn_network_is_connected(void) {
+    if (!_ozayn_net.initialized) return OZAYN_CONNECTIVITY_UNKNOWN;
+
+    /* Check if any non-loopback interface is UP with an IPv4 address */
+    for (unsigned int i = 0; i < _ozayn_net.count; i++) {
+        if (_ozayn_net_ifaces[i].is_up && !_ozayn_net_ifaces[i].is_loopback && _ozayn_net_ifaces[i].ipv4[0]) {
+            return OZAYN_CONNECTIVITY_CONNECTED;
+        }
+    }
+
+    /* Check if any non-loopback interface is UP with IPv6 */
+    for (unsigned int i = 0; i < _ozayn_net.count; i++) {
+        if (_ozayn_net_ifaces[i].is_up && !_ozayn_net_ifaces[i].is_loopback && _ozayn_net_ifaces[i].ipv6[0]) {
+            return OZAYN_CONNECTIVITY_CONNECTED;
+        }
+    }
+
+    /* Interfaces exist but none are up/connected */
+    if (_ozayn_net.count > 0) {
+        return OZAYN_CONNECTIVITY_DISCONNECTED;
+    }
+
+    return OZAYN_CONNECTIVITY_UNKNOWN;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

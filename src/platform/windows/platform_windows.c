@@ -917,6 +917,55 @@ ozayn_result_t ozayn_audio_output_stop(void) {
 }
 
 /* ================================================================
+ * L. Network Information & Connectivity Abstraction (Step 12)
+ * ================================================================
+ *
+ * Windows stub — requires IP Helper API for full implementation.
+ */
+
+static OzaynNetworkState _ozayn_net = {0};
+
+ozayn_result_t ozayn_network_init(void) {
+    if (_ozayn_net.initialized) return OZAYN_OK;
+    memset(&_ozayn_net, 0, sizeof(OzaynNetworkState));
+    _ozayn_net.initialized = 1;
+    LOG_INFO("NETWORK", "Network subsystem initialized (stub, available=no)");
+    return OZAYN_OK;
+}
+
+void ozayn_network_shutdown(void) {
+    if (!_ozayn_net.initialized) return;
+    memset(&_ozayn_net, 0, sizeof(OzaynNetworkState));
+    LOG_INFO("NETWORK", "Network subsystem shut down");
+}
+
+int ozayn_network_is_available(void) {
+    return _ozayn_net.available;
+}
+
+unsigned int ozayn_network_get_interface_count(void) {
+    if (!_ozayn_net.initialized) return 0;
+    return _ozayn_net.count;
+}
+
+ozayn_result_t ozayn_network_get_interface_info(unsigned int index, OzaynNetworkInterfaceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_net.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_net.count) return OZAYN_ERR;
+    memset(info, 0, sizeof(OzaynNetworkInterfaceInfo));
+    return OZAYN_OK;
+}
+
+int ozayn_network_get_default_interface(void) {
+    if (!_ozayn_net.initialized) return -1;
+    return _ozayn_net.has_default ? _ozayn_net.default_index : -1;
+}
+
+OzaynConnectivityState ozayn_network_is_connected(void) {
+    return OZAYN_CONNECTIVITY_UNKNOWN;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

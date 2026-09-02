@@ -27,6 +27,7 @@
  *   I. Input (Step 07)
  *   J. Keyboard & Input Event Abstraction (Step 08)
  *   K. Audio Output / Speaker Abstraction (Step 11)
+ *   L. Network Information & Connectivity Abstraction (Step 12)
  */
 
 /* ================================================================
@@ -813,6 +814,68 @@ ozayn_result_t ozayn_audio_output_close(void);
 ozayn_result_t ozayn_audio_output_start(void);
 ozayn_result_t ozayn_audio_output_write(const OzaynAudioOutputBuffer *buffer);
 ozayn_result_t ozayn_audio_output_stop(void);
+
+/* ================================================================
+ * L. Network Information & Connectivity Abstraction (Step 12)
+ * ================================================================
+ *
+ * Cross-platform network interface enumeration, address discovery,
+ * and basic connectivity checking. This is the information
+ * abstraction layer only — no packet capture, no port scanning,
+ * no traffic monitoring.
+ */
+
+#define OZAYN_MAX_NETWORK_IFACES 16
+#define OZAYN_MAX_IFACE_NAME_LEN 64
+#define OZAYN_MAX_IPV4_LEN 64
+#define OZAYN_MAX_IPV6_LEN 128
+#define OZAYN_MAX_MAC_LEN 32
+
+/* ---- Network Interface Info ---- */
+
+typedef struct {
+    int index;
+    char name[OZAYN_MAX_IFACE_NAME_LEN];
+    char ipv4[OZAYN_MAX_IPV4_LEN];
+    char ipv6[OZAYN_MAX_IPV6_LEN];
+    char mac[OZAYN_MAX_MAC_LEN];
+    int is_up;
+    int is_loopback;
+} OzaynNetworkInterfaceInfo;
+
+/* ---- Connectivity State ---- */
+
+typedef enum {
+    OZAYN_CONNECTIVITY_UNKNOWN = 0,
+    OZAYN_CONNECTIVITY_DISCONNECTED,
+    OZAYN_CONNECTIVITY_CONNECTED
+} OzaynConnectivityState;
+
+/* ---- Network State ---- */
+
+typedef struct {
+    int initialized;
+    int available;
+    unsigned int count;
+    int has_default;
+    int default_index;
+} OzaynNetworkState;
+
+/* ---- Network Lifecycle ---- */
+
+ozayn_result_t ozayn_network_init(void);
+void           ozayn_network_shutdown(void);
+
+/* ---- Network Queries ---- */
+
+int            ozayn_network_is_available(void);
+unsigned int   ozayn_network_get_interface_count(void);
+ozayn_result_t ozayn_network_get_interface_info(unsigned int index, OzaynNetworkInterfaceInfo *info);
+int            ozayn_network_get_default_interface(void);
+
+/* ---- Connectivity Check ---- */
+
+OzaynConnectivityState ozayn_network_is_connected(void);
 
 /* ================================================================
  * Platform Lifecycle
