@@ -1332,17 +1332,14 @@ static void _ozayn_mic_enumerate(void) {
     for (unsigned int i = 0; hints[i] && _ozayn_mic.count < OZAYN_MAX_MICROPHONES; i++) {
         char *name = snd_device_name_get_hint(hints[i], "NAME");
         char *desc = snd_device_name_get_hint(hints[i], "DESC");
-        char *io = snd_device_name_get_hint(hints[i], "IO");
 
-        /* Only consider capture devices */
-        if (!io || !strstr(io, "INPUT")) {
+        if (!name || strcmp(name, "null") == 0) {
             free(name);
             free(desc);
-            free(io);
             continue;
         }
 
-        /* Try to open the device to verify it works */
+        /* Try to open the device in capture mode to verify it works */
         snd_pcm_t *test_handle = NULL;
         int open_result = snd_pcm_open(&test_handle, name, SND_PCM_STREAM_CAPTURE, SND_PCM_NONBLOCK);
 
@@ -1387,7 +1384,6 @@ static void _ozayn_mic_enumerate(void) {
 
         free(name);
         free(desc);
-        free(io);
 
         _ozayn_mic.count++;
     }
