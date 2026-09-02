@@ -33,6 +33,7 @@
  *   O. Clipboard Abstraction (Step 15)
  *   P. Environment & User Session Abstraction (Step 16)
  *   Q. System Time & Date Abstraction (Step 17)
+ *   R. Application Launch & Discovery Abstraction (Step 18)
  */
 
 /* ================================================================
@@ -1080,6 +1081,40 @@ ozayn_result_t ozayn_time_get_utc(OzaynDateTime *datetime);
 /* ---- Sleep ---- */
 
 ozayn_result_t ozayn_time_sleep_ms(uint64_t milliseconds);
+
+/* ================================================================
+ * R. Application Launch & Discovery Abstraction (Step 18)
+ * ================================================================
+ *
+ * Cross-platform application discovery, launching, and URL opening.
+ * Read-only access to application state — no installation, no modification.
+ * No shell execution — uses native OS mechanisms only.
+ */
+
+/* ---- Application Lifecycle ---- */
+
+ozayn_result_t ozayn_application_init(void);
+void           ozayn_application_shutdown(void);
+
+/* ---- Application Queries ---- */
+
+int            ozayn_application_is_available(void);
+
+/* ---- Application Launch ---- */
+
+ozayn_result_t ozayn_application_launch(const char *application);
+
+/* ---- Application Existence ---- */
+
+int            ozayn_application_exists(const char *application);
+
+/* ---- Default Browser ---- */
+
+ozayn_result_t ozayn_application_get_default_browser(char *buffer, size_t buffer_size);
+
+/* ---- URL Opening ---- */
+
+ozayn_result_t ozayn_application_open_url(const char *url);
 
 /* ================================================================
  * Platform Lifecycle

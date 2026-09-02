@@ -1351,6 +1351,201 @@ ozayn_result_t ozayn_time_sleep_ms(uint64_t milliseconds) {
 }
 
 /* ================================================================
+ * R. Application Launch & Discovery Abstraction (Step 18)
+ * ================================================================
+ *
+ * Windows stub — requires Win32 ShellExecute/CreateProcess for full implementation.
+ * Uses standard C functions with fallbacks.
+ */
+
+#include <direct.h>
+#include <ctype.h>
+
+static int _ozayn_application_initialized = 0;
+
+/* Internal helper: check if a file is executable at the given path */
+static int _ozayn_app_is_executable(const char *path) {
+    if (!path || !*path) return 0;
+    DWORD attr = GetFileAttributesA(path);
+    if (attr == INVALID_FILE_ATTRIBUTES) return 0;
+    if (attr & FILE_ATTRIBUTE_DIRECTORY) return 0;
+    /* Check for common executable extensions */
+    size_t len = strlen(path);
+    if (len >= 4) {
+        const char *ext = path + len - 4;
+        if (_stricmp(ext, ".exe") == 0 || _stricmp(ext, ".cmd") == 0 ||
+            _stricmp(ext, ".bat") == 0 || _stricmp(ext, ".com") == 0) {
+            return 1;
+        }
+    }
+    /* Check PATH for the executable */
+    char fullpath[MAX_PATH];
+    if (SearchPathA(NULL, path, ".exe", sizeof(fullpath), fullpath, NULL)) {
+        return 1;
+    }
+    return 0;
+}
+
+/* Internal helper: search for application in PATH directories */
+static int _ozayn_app_search_path(const char *app) {
+    if (!app || !*app) return 0;
+
+    if (strchr(app, '\\') != NULL || strchr(app, '/') != NULL) {
+        return _ozayn_app_is_executable(app);
+    }
+
+    char fullpath[MAX_PATH];
+    if (SearchPathA(NULL, app, ".exe", sizeof(fullpath), fullpath, NULL)) {
+        return 1;
+    }
+    if (SearchPathA(NULL, app, NULL, sizeof(fullpath), fullpath, NULL)) {
+        return 1;
+    }
+
+    return 0;
+}
+
+/* Internal helper: find URL opener */
+static const char* _ozayn_find_url_opener(void) {
+    if (_ozayn_app_search_path("cmd")) return "cmd";
+    return NULL;
+}
+
+/* Internal helper: check URL scheme */
+static int _ozayn_is_valid_url_scheme(const char *url) {
+    if (!url) return 0;
+    const char *valid[] = { "http://", "https://", "ftp://", "mailto:", NULL };
+    for (int i = 0; valid[i]; i++) {
+        size_t len = strlen(valid[i]);
+        if (_strnicmp(url, valid[i], len) == 0) return 1;
+    }
+    return 0;
+}
+
+/* Internal helper: find default browser */
+static ozayn_result_t _ozayn_get_default_browser_xdg(char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) return OZAYN_ERR_NULL;
+
+    HKEY hKey;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER,
+                      "Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice",
+                      0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        char progid[256] = {0};
+        DWORD progid_size = sizeof(progid);
+        if (RegQueryValueExA(hKey, "ProgId", NULL, NULL, (LPBYTE)progid, &progid_size) == ERROR_SUCCESS) {
+            RegCloseKey(hKey);
+
+            /* Try to get the shell command for this ProgId */
+            char cmdkey[512];
+            snprintf(cmdkey, sizeof(cmdkey), "Shell\\%s\\open\\command", progid);
+            HKEY hCmdKey;
+            if (RegOpenKeyExA(HKEY_CLASSES_ROOT, cmdkey, 0, KEY_READ, &hCmdKey) == ERROR_SUCCESS) {
+                char cmd[1024] = {0};
+                DWORD cmd_size = sizeof(cmd);
+                if (RegQueryValueExA(hCmdKey, NULL, NULL, NULL, (LPBYTE)cmd, &cmd_size) == ERROR_SUCCESS) {
+                    /* Extract executable path from command string */
+                    char *start = cmd;
+                    if (*start == '"') {
+                        start++;
+                        char *end = strchr(start, '"');
+                        if (end) *end = '\0';
+                    } else {
+                        char *space = strchr(start, ' ');
+                        if (space) *space = '\0';
+                    }
+                    /* Get just the filename */
+                    char *fname = strrchr(start, '\\');
+                    if (fname) fname++; else fname = start;
+
+                    size_t len = strlen(fname);
+                    if (len >= buffer_size) len = buffer_size - 1;
+                    memcpy(buffer, fname, len);
+                    buffer[len] = '\0';
+                    RegCloseKey(hCmdKey);
+                    return OZAYN_OK;
+                }
+                RegCloseKey(hCmdKey);
+            }
+        }
+        RegCloseKey(hKey);
+    }
+
+    /* Fallback: check common browsers */
+    const char *browsers[] = {
+        "msedge", "chrome", "firefox", "opera", "brave", "vivaldi", NULL
+    };
+    for (int i = 0; browsers[i]; i++) {
+        if (_ozayn_app_search_path(browsers[i])) {
+            size_t len = strlen(browsers[i]);
+            if (len >= buffer_size) len = buffer_size - 1;
+            memcpy(buffer, browsers[i], len);
+            buffer[len] = '\0';
+            return OZAYN_OK;
+        }
+    }
+
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_application_init(void) {
+    if (_ozayn_application_initialized) return OZAYN_OK;
+    _ozayn_application_initialized = 1;
+    LOG_INFO("APP", "Application subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_application_shutdown(void) {
+    if (!_ozayn_application_initialized) return;
+    _ozayn_application_initialized = 0;
+    LOG_INFO("APP", "Application subsystem shut down");
+}
+
+int ozayn_application_is_available(void) {
+    return _ozayn_application_initialized;
+}
+
+ozayn_result_t ozayn_application_launch(const char *application) {
+    if (!application) return OZAYN_ERR_NULL;
+    if (!*application) return OZAYN_ERR;
+    if (!_ozayn_application_initialized) return OZAYN_ERR;
+
+    /* Try ShellExecute first */
+    HINSTANCE hInst = ShellExecuteA(NULL, "open", application, NULL, NULL, SW_SHOWNORMAL);
+    if ((uintptr_t)hInst > 32) {
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+int ozayn_application_exists(const char *application) {
+    if (!application) return 0;
+    if (!*application) return 0;
+    if (!_ozayn_application_initialized) return 0;
+    return _ozayn_app_search_path(application);
+}
+
+ozayn_result_t ozayn_application_get_default_browser(char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) return OZAYN_ERR_NULL;
+    if (!_ozayn_application_initialized) return OZAYN_ERR;
+    return _ozayn_get_default_browser_xdg(buffer, buffer_size);
+}
+
+ozayn_result_t ozayn_application_open_url(const char *url) {
+    if (!url) return OZAYN_ERR_NULL;
+    if (!*url) return OZAYN_ERR;
+    if (!_ozayn_application_initialized) return OZAYN_ERR;
+    if (!_ozayn_is_valid_url_scheme(url)) return OZAYN_ERR;
+
+    HINSTANCE hInst = ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
+    if ((uintptr_t)hInst > 32) {
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

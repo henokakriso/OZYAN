@@ -1419,6 +1419,252 @@ ozayn_result_t ozayn_time_sleep_ms(uint64_t milliseconds) {
 }
 
 /* ================================================================
+ * R. Application Launch & Discovery Abstraction (Step 18)
+ * ================================================================
+ *
+ * macOS stub — requires NSWorkspace/AppleScript for full implementation.
+ * Uses POSIX fork()+execvp() with fallbacks.
+ */
+
+#include <libgen.h>
+#include <ctype.h>
+
+static int _ozayn_application_initialized = 0;
+
+/* Internal helper: check if a file is executable at the given path */
+static int _ozayn_app_is_executable(const char *path) {
+    if (!path || !*path) return 0;
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+    return S_ISREG(st.st_mode) && (st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH));
+}
+
+/* Internal helper: search for application in PATH directories */
+static int _ozayn_app_search_path(const char *app) {
+    if (!app || !*app) return 0;
+
+    if (strchr(app, '/') != NULL) {
+        return _ozayn_app_is_executable(app);
+    }
+
+    const char *path_env = getenv("PATH");
+    if (!path_env) return 0;
+
+    char path_buf[4096];
+    size_t path_len = strlen(path_env);
+    if (path_len >= sizeof(path_buf)) path_len = sizeof(path_buf) - 1;
+    memcpy(path_buf, path_env, path_len);
+    path_buf[path_len] = '\0';
+
+    char *saveptr = NULL;
+    char *dir = strtok_r(path_buf, ":", &saveptr);
+
+    while (dir) {
+        if (*dir) {
+            char fullpath[4096];
+            snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, app);
+            if (_ozayn_app_is_executable(fullpath)) {
+                return 1;
+            }
+        }
+        dir = strtok_r(NULL, ":", &saveptr);
+    }
+
+    return 0;
+}
+
+/* Internal helper: find URL opener */
+static const char* _ozayn_find_url_opener(void) {
+    const char *openers[] = { "open", "xdg-open", NULL };
+    for (int i = 0; openers[i]; i++) {
+        if (_ozayn_app_search_path(openers[i])) {
+            return openers[i];
+        }
+    }
+    return NULL;
+}
+
+/* Internal helper: check URL scheme */
+static int _ozayn_is_valid_url_scheme(const char *url) {
+    if (!url) return 0;
+    const char *valid[] = { "http://", "https://", "ftp://", "mailto:", NULL };
+    for (int i = 0; valid[i]; i++) {
+        size_t len = strlen(valid[i]);
+        if (strncmp(url, valid[i], len) == 0) return 1;
+    }
+    return 0;
+}
+
+/* Internal helper: find default browser */
+static ozayn_result_t _ozayn_get_default_browser_xdg(char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) return OZAYN_ERR_NULL;
+
+    /* Try xdg-settings */
+    if (_ozayn_app_search_path("xdg-settings")) {
+        int pipefd[2];
+        if (pipe(pipefd) == 0) {
+            pid_t pid = fork();
+            if (pid == 0) {
+                close(pipefd[0]);
+                dup2(pipefd[1], STDOUT_FILENO);
+                close(pipefd[1]);
+                execlp("xdg-settings", "xdg-settings", "get", "default-web-browser", (char *)NULL);
+                _exit(127);
+            } else if (pid > 0) {
+                close(pipefd[1]);
+                char result[1024] = {0};
+                ssize_t total = 0;
+                ssize_t n;
+                while ((n = read(pipefd[0], result + total, sizeof(result) - total - 1)) > 0) {
+                    total += n;
+                }
+                close(pipefd[0]);
+                int status;
+                waitpid(pid, &status, 0);
+                if (WIFEXITED(status) && WEXITSTATUS(status) == 0 && total > 0) {
+                    while (total > 0 && (result[total-1] == '\n' || result[total-1] == '\r')) {
+                        result[--total] = '\0';
+                    }
+                    size_t copy_len = strlen(result);
+                    if (copy_len >= buffer_size) copy_len = buffer_size - 1;
+                    memcpy(buffer, result, copy_len);
+                    buffer[copy_len] = '\0';
+                    return OZAYN_OK;
+                }
+            }
+        }
+    }
+
+    /* Fallback: find common browsers */
+    const char *browsers[] = {
+        "safari", "firefox", "google-chrome", "chromium", "opera",
+        "brave-browser", "vivaldi", "lynx", NULL
+    };
+    for (int i = 0; browsers[i]; i++) {
+        if (_ozayn_app_search_path(browsers[i])) {
+            size_t len = strlen(browsers[i]);
+            if (len >= buffer_size) len = buffer_size - 1;
+            memcpy(buffer, browsers[i], len);
+            buffer[len] = '\0';
+            return OZAYN_OK;
+        }
+    }
+
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_application_init(void) {
+    if (_ozayn_application_initialized) return OZAYN_OK;
+    _ozayn_application_initialized = 1;
+    LOG_INFO("APP", "Application subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_application_shutdown(void) {
+    if (!_ozayn_application_initialized) return;
+    _ozayn_application_initialized = 0;
+    LOG_INFO("APP", "Application subsystem shut down");
+}
+
+int ozayn_application_is_available(void) {
+    return _ozayn_application_initialized;
+}
+
+ozayn_result_t ozayn_application_launch(const char *application) {
+    if (!application) return OZAYN_ERR_NULL;
+    if (!*application) return OZAYN_ERR;
+    if (!_ozayn_application_initialized) return OZAYN_ERR;
+
+    char fullpath[4096] = {0};
+    int found = 0;
+
+    if (strchr(application, '/') != NULL) {
+        if (_ozayn_app_is_executable(application)) {
+            size_t len = strlen(application);
+            if (len >= sizeof(fullpath)) len = sizeof(fullpath) - 1;
+            memcpy(fullpath, application, len);
+            fullpath[len] = '\0';
+            found = 1;
+        }
+    } else {
+        const char *path_env = getenv("PATH");
+        if (path_env) {
+            char path_buf[4096];
+            size_t path_len = strlen(path_env);
+            if (path_len >= sizeof(path_buf)) path_len = sizeof(path_buf) - 1;
+            memcpy(path_buf, path_env, path_len);
+            path_buf[path_len] = '\0';
+            char *saveptr = NULL;
+            char *dir = strtok_r(path_buf, ":", &saveptr);
+            while (dir && !found) {
+                if (*dir) {
+                    snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, application);
+                    if (_ozayn_app_is_executable(fullpath)) found = 1;
+                }
+                dir = strtok_r(NULL, ":", &saveptr);
+            }
+        }
+    }
+
+    if (!found) return OZAYN_ERR;
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        setsid();
+        execl(fullpath, application, (char *)NULL);
+        _exit(127);
+    } else if (pid > 0) {
+        int status;
+        int wait_result = waitpid(pid, &status, WNOHANG);
+        if (wait_result > 0 && WIFEXITED(status) && WEXITSTATUS(status) == 127) {
+            return OZAYN_ERR;
+        }
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+int ozayn_application_exists(const char *application) {
+    if (!application) return 0;
+    if (!*application) return 0;
+    if (!_ozayn_application_initialized) return 0;
+    return _ozayn_app_search_path(application);
+}
+
+ozayn_result_t ozayn_application_get_default_browser(char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) return OZAYN_ERR_NULL;
+    if (!_ozayn_application_initialized) return OZAYN_ERR;
+    return _ozayn_get_default_browser_xdg(buffer, buffer_size);
+}
+
+ozayn_result_t ozayn_application_open_url(const char *url) {
+    if (!url) return OZAYN_ERR_NULL;
+    if (!*url) return OZAYN_ERR;
+    if (!_ozayn_application_initialized) return OZAYN_ERR;
+    if (!_ozayn_is_valid_url_scheme(url)) return OZAYN_ERR;
+
+    const char *opener = _ozayn_find_url_opener();
+    if (!opener) return OZAYN_ERR;
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        setsid();
+        execlp(opener, opener, url, (char *)NULL);
+        _exit(127);
+    } else if (pid > 0) {
+        int status;
+        int wait_result = waitpid(pid, &status, WNOHANG);
+        if (wait_result > 0 && WIFEXITED(status) && WEXITSTATUS(status) == 127) {
+            return OZAYN_ERR;
+        }
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

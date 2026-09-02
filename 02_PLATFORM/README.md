@@ -1593,6 +1593,101 @@ Tests verify:
 - Sleep basic, zero, before init
 - NULL parameter handling
 
+## Step 18 — Application Launch & Discovery Abstraction
+
+Cross-platform application discovery, launching, and URL opening. Read-only access to application state — no installation, no modification. No shell execution — uses native OS mechanisms only.
+
+### Application Lifecycle
+
+```
+ozayn_application_init()
+        ↓
+query/launch applications
+        ↓
+ozayn_application_shutdown()
+```
+
+### Public API
+
+```c
+/* Application Lifecycle */
+ozayn_result_t ozayn_application_init(void);
+void           ozayn_application_shutdown(void);
+
+/* Application Queries */
+int            ozayn_application_is_available(void);
+
+/* Application Launch */
+ozayn_result_t ozayn_application_launch(const char *application);
+
+/* Application Existence */
+int            ozayn_application_exists(const char *application);
+
+/* Default Browser */
+ozayn_result_t ozayn_application_get_default_browser(char *buffer, size_t buffer_size);
+
+/* URL Opening */
+ozayn_result_t ozayn_application_open_url(const char *url);
+```
+
+### Safety
+
+- No shell execution — uses `fork()`+`execvp()` on POSIX, `ShellExecute` on Windows
+- No `system()` calls — ever
+- No command injection possible
+- No privilege escalation
+- No application installation
+- No browser data extraction
+- NULL parameters handled safely
+- Empty strings rejected
+
+### Platform Implementations
+
+- Linux: POSIX `fork()`+`execvp()`, PATH search, `xdg-open` for URLs
+- macOS: POSIX `fork()`+`execvp()`, `open` command for URLs
+- Windows: `ShellExecuteA`, `SearchPathA` for discovery
+
+### Application Discovery
+
+- Searches `PATH` environment variable directories
+- Checks file executable permissions
+- Supports absolute/relative paths
+- No recursive filesystem scanning
+
+### Application Launching
+
+- Forks child process, executes via `execvp()` (POSIX) or `ShellExecute` (Windows)
+- No shell involved — direct binary execution
+- Setsid for process isolation
+- Detects immediate exec failures
+
+### URL Opening
+
+- Validates URL scheme (http, https, ftp, mailto)
+- Finds desktop URL opener (xdg-open, gnome-open, open)
+- Passes URL as argument — no shell interpretation
+- Rejects invalid schemes
+
+### Default Browser Detection
+
+- Linux: `xdg-settings get default-web-browser` with fallback to common browsers
+- Windows: Registry lookup for `UserChoice` ProgId
+- macOS: `xdg-settings` with fallback to common browsers
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Application existence (valid, nonexistent, null, empty, path)
+- Application launch (null, empty, before init, nonexistent, valid)
+- Default browser (null, zero size, before init, valid)
+- URL opening (null, empty, before init, invalid scheme, no scheme, valid, ftp, mailto, oversized)
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1612,4 +1707,5 @@ Tests verify:
 - [x] Step 15: Clipboard Abstraction
 - [x] Step 16: Environment & User Session Abstraction
 - [x] Step 17: System Time & Date Abstraction
-- [ ] Steps 18-35: (future)
+- [x] Step 18: Application Launch & Discovery Abstraction
+- [ ] Steps 19-35: (future)
