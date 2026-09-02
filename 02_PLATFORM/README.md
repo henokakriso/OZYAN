@@ -893,6 +893,111 @@ make test
 - Microphone shutdown (basic + idempotent + before init)
 - Audio format constants
 
+## Step 11 — Audio Output / Speaker Abstraction
+
+Cross-platform audio output enumeration, configuration, and PCM audio playback.
+
+### Audio Output Lifecycle
+
+```
+ozayn_audio_output_init()
+        ↓
+enumerate devices
+        ↓
+ozayn_audio_output_open(index)
+        ↓
+ozayn_audio_output_start()
+        ↓
+write audio
+        ↓
+ozayn_audio_output_stop()
+        ↓
+ozayn_audio_output_close()
+        ↓
+ozayn_audio_output_shutdown()
+```
+
+### Public API
+
+```c
+/* Audio Output Lifecycle */
+ozayn_result_t ozayn_audio_output_init(void);
+void           ozayn_audio_output_shutdown(void);
+
+/* Device Queries */
+int            ozayn_audio_output_is_available(void);
+unsigned int   ozayn_audio_output_get_count(void);
+ozayn_result_t ozayn_audio_output_get_info(unsigned int index, OzaynAudioOutputInfo *info);
+
+/* Device Control */
+ozayn_result_t ozayn_audio_output_open(unsigned int index);
+ozayn_result_t ozayn_audio_output_close(void);
+
+/* Streaming Control */
+ozayn_result_t ozayn_audio_output_start(void);
+ozayn_result_t ozayn_audio_output_write(const OzaynAudioOutputBuffer *buffer);
+ozayn_result_t ozayn_audio_output_stop(void);
+```
+
+### Data Structures
+
+```c
+typedef struct {
+    int index;
+    char id[256];
+    char name[256];
+    int available;
+    int channels;
+    int sample_rate;
+} OzaynAudioOutputInfo;
+
+typedef struct {
+    unsigned int sample_rate;
+    unsigned int channels;
+    OzaynAudioFormat format;
+    size_t frame_count;
+    const unsigned char *data;
+    size_t data_size;
+} OzaynAudioOutputBuffer;
+```
+
+### Safety
+
+- All functions handle NULL parameters safely
+- `ozayn_audio_output_shutdown()` is idempotent and safe to call multiple times
+- Invalid lifecycle transitions are rejected (write before open, start twice, etc.)
+- Works in headless/no-audio environments (count=0, available=0)
+- No hidden audio playback, no persistent audio, no network streaming
+- Only explicitly requested audio output is performed
+
+### Platform Implementations
+
+- Linux: ALSA for device enumeration and PCM output
+- macOS: Stub (requires Core Audio / AVFoundation)
+- Windows: Stub (requires WASAPI)
+
+### Linux Implementation
+
+- Enumerates playback devices via `snd_device_name_hint`
+- Opens devices with `snd_pcm_open` in non-blocking mode
+- Configures S16_LE format, channels, and sample rate
+- Uses `snd_pcm_writei` for interleaved PCM output
+- Handles underrun recovery via `snd_pcm_recover`
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Device enumeration (count before/after init, get info valid/invalid/null/before init)
+- Lifecycle transitions (open invalid index, open before init, start before open, stop before start, write before open/null/before init, close before open/before init)
+- Buffer validation (empty, no data, unknown format, insufficient data)
+- Audio format constants
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -905,4 +1010,5 @@ make test
 - [x] Step 08: Keyboard & Input Event Abstraction
 - [x] Step 09: Camera Device Abstraction
 - [x] Step 10: Microphone Device Abstraction
-- [ ] Steps 11-35: (future)
+- [x] Step 11: Audio Output / Speaker Abstraction
+- [ ] Steps 12-35: (future)

@@ -895,6 +895,69 @@ void ozayn_microphone_buffer_release(OzaynAudioBuffer *buffer) {
 }
 
 /* ================================================================
+ * K. Audio Output / Speaker Abstraction (Step 11)
+ * ================================================================
+ *
+ * macOS stub — requires Core Audio / AVFoundation for full
+ * implementation.
+ */
+
+static OzaynAudioOutputState _ozayn_speaker = {0};
+
+ozayn_result_t ozayn_audio_output_init(void) {
+    if (_ozayn_speaker.initialized) return OZAYN_OK;
+    memset(&_ozayn_speaker, 0, sizeof(OzaynAudioOutputState));
+    _ozayn_speaker.initialized = 1;
+    LOG_INFO("SPEAKER", "Audio output subsystem initialized (stub, available=no)");
+    return OZAYN_OK;
+}
+
+void ozayn_audio_output_shutdown(void) {
+    if (!_ozayn_speaker.initialized) return;
+    memset(&_ozayn_speaker, 0, sizeof(OzaynAudioOutputState));
+    LOG_INFO("SPEAKER", "Audio output subsystem shut down");
+}
+
+int ozayn_audio_output_is_available(void) {
+    return _ozayn_speaker.available;
+}
+
+unsigned int ozayn_audio_output_get_count(void) {
+    if (!_ozayn_speaker.initialized) return 0;
+    return _ozayn_speaker.count;
+}
+
+ozayn_result_t ozayn_audio_output_get_info(unsigned int index, OzaynAudioOutputInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_speaker.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_speaker.count) return OZAYN_ERR;
+    memset(info, 0, sizeof(OzaynAudioOutputInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_output_open(unsigned int index) {
+    (void)index;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_audio_output_close(void) {
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_audio_output_start(void) {
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_audio_output_write(const OzaynAudioOutputBuffer *buffer) {
+    (void)buffer;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_audio_output_stop(void) {
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

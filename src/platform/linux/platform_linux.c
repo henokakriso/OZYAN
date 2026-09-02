@@ -1604,6 +1604,269 @@ void ozayn_microphone_buffer_release(OzaynAudioBuffer *buffer) {
 }
 
 /* ================================================================
+ * K. Audio Output / Speaker Abstraction (Step 11)
+ * ================================================================
+ *
+ * Cross-platform audio output enumeration, configuration, and PCM
+ * playback. Uses ALSA on Linux.
+ */
+
+#define OZAYN_MAX_SPEAKER_DEFAULT 44100
+
+static OzaynAudioOutputState _ozayn_speaker = {0};
+static OzaynAudioOutputInfo _ozayn_speaker_infos[OZAYN_MAX_SPEAKERS];
+static snd_pcm_t *_ozayn_speaker_handle = NULL;
+static unsigned int _ozayn_speaker_open_index = 0;
+
+static void _ozayn_speaker_enumerate(void) {
+    void **hints = NULL;
+    _ozayn_speaker.count = 0;
+
+    int ret = snd_device_name_hint(-1, "pcm", &hints);
+    if (ret < 0 || !hints) return;
+
+    for (unsigned int i = 0; hints[i] && _ozayn_speaker.count < OZAYN_MAX_SPEAKERS; i++) {
+        char *name = snd_device_name_get_hint(hints[i], "NAME");
+        char *desc = snd_device_name_get_hint(hints[i], "DESC");
+
+        if (!name || strcmp(name, "null") == 0) {
+            free(name);
+            free(desc);
+            continue;
+        }
+
+        /* Try to open the device in playback mode to verify it works */
+        snd_pcm_t *test_handle = NULL;
+        int open_result = snd_pcm_open(&test_handle, name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+
+        OzaynAudioOutputInfo *info = &_ozayn_speaker_infos[_ozayn_speaker.count];
+        memset(info, 0, sizeof(OzaynAudioOutputInfo));
+        info->index = (int)_ozayn_speaker.count;
+        info->available = (open_result == 0) ? 1 : 0;
+
+        /* Copy name (device ID) */
+        if (name) {
+            size_t len = strlen(name);
+            if (len >= OZAYN_MAX_SPEAKER_ID) len = OZAYN_MAX_SPEAKER_ID - 1;
+            memcpy(info->id, name, len);
+            info->id[len] = '\0';
+        }
+
+        /* Copy description (human-readable name) */
+        if (desc) {
+            /* desc may contain newlines; use first line */
+            const char *first_line = desc;
+            const char *nl = strchr(desc, '\n');
+            size_t len = nl ? (size_t)(nl - desc) : strlen(desc);
+            if (len >= OZAYN_MAX_SPEAKER_NAME) len = OZAYN_MAX_SPEAKER_NAME - 1;
+            memcpy(info->name, first_line, len);
+            info->name[len] = '\0';
+        } else {
+            strncpy(info->name, info->id, OZAYN_MAX_SPEAKER_NAME - 1);
+        }
+
+        /* Defaults */
+        info->channels = 2;
+        info->sample_rate = OZAYN_MAX_SPEAKER_DEFAULT;
+
+        /* Close test handle */
+        if (open_result == 0 && test_handle) {
+            snd_pcm_close(test_handle);
+        }
+
+        _ozayn_speaker.count++;
+        free(name);
+        free(desc);
+    }
+
+    snd_device_name_free_hint(hints);
+}
+
+ozayn_result_t ozayn_audio_output_init(void) {
+    if (_ozayn_speaker.initialized) return OZAYN_OK;
+
+    memset(&_ozayn_speaker, 0, sizeof(OzaynAudioOutputState));
+    memset(_ozayn_speaker_infos, 0, sizeof(_ozayn_speaker_infos));
+    _ozayn_speaker_handle = NULL;
+
+    _ozayn_speaker_enumerate();
+    _ozayn_speaker.available = (_ozayn_speaker.count > 0) ? 1 : 0;
+    _ozayn_speaker.initialized = 1;
+
+    LOG_INFO("SPEAKER", "Audio output subsystem initialized (count=%u, available=%s)",
+             _ozayn_speaker.count, _ozayn_speaker.available ? "yes" : "no");
+
+    return OZAYN_OK;
+}
+
+void ozayn_audio_output_shutdown(void) {
+    if (!_ozayn_speaker.initialized) return;
+
+    if (_ozayn_speaker.open) {
+        ozayn_audio_output_stop();
+        ozayn_audio_output_close();
+    }
+
+    memset(&_ozayn_speaker, 0, sizeof(OzaynAudioOutputState));
+    _ozayn_speaker_handle = NULL;
+    LOG_INFO("SPEAKER", "Audio output subsystem shut down");
+}
+
+int ozayn_audio_output_is_available(void) {
+    return _ozayn_speaker.available;
+}
+
+unsigned int ozayn_audio_output_get_count(void) {
+    if (!_ozayn_speaker.initialized) return 0;
+    return _ozayn_speaker.count;
+}
+
+ozayn_result_t ozayn_audio_output_get_info(unsigned int index, OzaynAudioOutputInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_speaker.initialized) return OZAYN_ERR;
+    if (index >= _ozayn_speaker.count) return OZAYN_ERR;
+
+    memcpy(info, &_ozayn_speaker_infos[index], sizeof(OzaynAudioOutputInfo));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_output_open(unsigned int index) {
+    if (!_ozayn_speaker.initialized) return OZAYN_ERR;
+    if (_ozayn_speaker.open) return OZAYN_ERR_STATE;
+    if (index >= _ozayn_speaker.count) return OZAYN_ERR;
+
+    const char *dev_name = _ozayn_speaker_infos[index].id;
+    int err = snd_pcm_open(&_ozayn_speaker_handle, dev_name, SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK);
+    if (err < 0) {
+        LOG_WARN("SPEAKER", "Failed to open %s: %s", dev_name, snd_strerror(err));
+        return OZAYN_ERR;
+    }
+
+    /* Configure hardware params */
+    snd_pcm_hw_params_t *hw_params;
+    snd_pcm_hw_params_alloca(&hw_params);
+    snd_pcm_hw_params_any(_ozayn_speaker_handle, hw_params);
+
+    /* Set access type */
+    snd_pcm_hw_params_set_access(_ozayn_speaker_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+
+    /* Set format: signed 16-bit little-endian */
+    snd_pcm_hw_params_set_format(_ozayn_speaker_handle, hw_params, SND_PCM_FORMAT_S16_LE);
+
+    /* Set channels */
+    unsigned int channels = (unsigned int)_ozayn_speaker_infos[index].channels;
+    if (channels == 0) channels = 2;
+    snd_pcm_hw_params_set_channels(_ozayn_speaker_handle, hw_params, channels);
+
+    /* Set sample rate */
+    unsigned int rate = (unsigned int)_ozayn_speaker_infos[index].sample_rate;
+    if (rate == 0) rate = 44100;
+    snd_pcm_hw_params_set_rate_near(_ozayn_speaker_handle, hw_params, &rate, NULL);
+
+    err = snd_pcm_hw_params(_ozayn_speaker_handle, hw_params);
+    if (err < 0) {
+        LOG_WARN("SPEAKER", "Failed to set hw params: %s", snd_strerror(err));
+        snd_pcm_close(_ozayn_speaker_handle);
+        _ozayn_speaker_handle = NULL;
+        return OZAYN_ERR;
+    }
+
+    _ozayn_speaker_open_index = index;
+    _ozayn_speaker.open = 1;
+
+    LOG_INFO("SPEAKER", "Audio output opened: %s", _ozayn_speaker_infos[index].name);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_output_close(void) {
+    if (!_ozayn_speaker.initialized) return OZAYN_ERR;
+    if (!_ozayn_speaker.open) return OZAYN_ERR_STATE;
+
+    if (_ozayn_speaker.streaming) {
+        ozayn_audio_output_stop();
+    }
+
+    if (_ozayn_speaker_handle) {
+        snd_pcm_close(_ozayn_speaker_handle);
+        _ozayn_speaker_handle = NULL;
+    }
+
+    _ozayn_speaker.open = 0;
+    _ozayn_speaker_open_index = 0;
+
+    LOG_INFO("SPEAKER", "Audio output closed");
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_output_start(void) {
+    if (!_ozayn_speaker.initialized) return OZAYN_ERR;
+    if (!_ozayn_speaker.open) return OZAYN_ERR_STATE;
+    if (_ozayn_speaker.streaming) return OZAYN_ERR_STATE;
+    if (!_ozayn_speaker_handle) return OZAYN_ERR;
+
+    /* Prepare the PCM device */
+    int err = snd_pcm_prepare(_ozayn_speaker_handle);
+    if (err < 0) {
+        LOG_WARN("SPEAKER", "snd_pcm_prepare failed: %s", snd_strerror(err));
+        return OZAYN_ERR;
+    }
+
+    _ozayn_speaker.streaming = 1;
+    LOG_INFO("SPEAKER", "Playback started");
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_output_write(const OzaynAudioOutputBuffer *buffer) {
+    if (!buffer) return OZAYN_ERR_NULL;
+    if (!_ozayn_speaker.initialized) return OZAYN_ERR;
+    if (!_ozayn_speaker.open || !_ozayn_speaker.streaming) return OZAYN_ERR_STATE;
+    if (!_ozayn_speaker_handle) return OZAYN_ERR;
+
+    /* Validate buffer */
+    if (!buffer->data || buffer->data_size == 0) return OZAYN_ERR;
+    if (buffer->frame_count == 0) return OZAYN_ERR;
+    if (buffer->channels == 0) return OZAYN_ERR;
+
+    /* Check format: only S16 supported currently */
+    if (buffer->format != OZAYN_AUDIO_FORMAT_S16) return OZAYN_ERR;
+
+    /* Validate data_size: frame_count * channels * sizeof(int16_t) */
+    size_t expected_size = buffer->frame_count * buffer->channels * sizeof(int16_t);
+    if (buffer->data_size < expected_size) return OZAYN_ERR;
+
+    /* Write interleaved samples */
+    snd_pcm_sframes_t frames = snd_pcm_writei(_ozayn_speaker_handle, buffer->data, buffer->frame_count);
+    if (frames < 0) {
+        /* Try to recover from underrun */
+        frames = snd_pcm_recover(_ozayn_speaker_handle, (int)frames, 0);
+        if (frames < 0) {
+            LOG_WARN("SPEAKER", "snd_pcm_writei failed: %s", snd_strerror((int)frames));
+            return OZAYN_ERR;
+        }
+        frames = snd_pcm_writei(_ozayn_speaker_handle, buffer->data, buffer->frame_count);
+        if (frames < 0) {
+            LOG_WARN("SPEAKER", "snd_pcm_writei retry failed: %s", snd_strerror((int)frames));
+            return OZAYN_ERR;
+        }
+    }
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_output_stop(void) {
+    if (!_ozayn_speaker.initialized) return OZAYN_ERR;
+    if (!_ozayn_speaker.streaming) return OZAYN_ERR_STATE;
+
+    if (_ozayn_speaker_handle) {
+        snd_pcm_drop(_ozayn_speaker_handle);
+    }
+
+    _ozayn_speaker.streaming = 0;
+    LOG_INFO("SPEAKER", "Playback stopped");
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

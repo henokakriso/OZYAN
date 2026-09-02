@@ -26,6 +26,7 @@
  *   H. Microphone Device Abstraction (Step 10)
  *   I. Input (Step 07)
  *   J. Keyboard & Input Event Abstraction (Step 08)
+ *   K. Audio Output / Speaker Abstraction (Step 11)
  */
 
 /* ================================================================
@@ -745,6 +746,73 @@ ozayn_result_t ozayn_keyboard_poll_event(OzaynInputEvent *event);
 
 /* Get human-readable name for a key. Never returns NULL. */
 const char *ozayn_key_name(OzaynKey key);
+
+/* ================================================================
+ * K. Audio Output / Speaker Abstraction (Step 11)
+ * ================================================================
+ *
+ * Cross-platform audio output enumeration, configuration, and PCM
+ * audio playback. This is the hardware/device abstraction layer only.
+ * Uses OzaynAudioFormat from Section H for sample format.
+ */
+
+#define OZAYN_MAX_SPEAKERS 16
+#define OZAYN_MAX_SPEAKER_NAME 256
+#define OZAYN_MAX_SPEAKER_ID 256
+
+/* ---- Audio Output Info ---- */
+
+typedef struct {
+    int index;
+    char id[OZAYN_MAX_SPEAKER_ID];
+    char name[OZAYN_MAX_SPEAKER_NAME];
+    int available;
+    int channels;
+    int sample_rate;
+} OzaynAudioOutputInfo;
+
+/* ---- Audio Output Buffer (caller-owned data) ---- */
+
+typedef struct {
+    unsigned int sample_rate;
+    unsigned int channels;
+    OzaynAudioFormat format;
+    size_t frame_count;
+    const unsigned char *data;
+    size_t data_size;
+} OzaynAudioOutputBuffer;
+
+/* ---- Audio Output State ---- */
+
+typedef struct {
+    int initialized;
+    int available;
+    int open;
+    int streaming;
+    unsigned int count;
+} OzaynAudioOutputState;
+
+/* ---- Audio Output Lifecycle ---- */
+
+ozayn_result_t ozayn_audio_output_init(void);
+void           ozayn_audio_output_shutdown(void);
+
+/* ---- Audio Output Queries ---- */
+
+int            ozayn_audio_output_is_available(void);
+unsigned int   ozayn_audio_output_get_count(void);
+ozayn_result_t ozayn_audio_output_get_info(unsigned int index, OzaynAudioOutputInfo *info);
+
+/* ---- Audio Output Control ---- */
+
+ozayn_result_t ozayn_audio_output_open(unsigned int index);
+ozayn_result_t ozayn_audio_output_close(void);
+
+/* ---- Audio Output Streaming ---- */
+
+ozayn_result_t ozayn_audio_output_start(void);
+ozayn_result_t ozayn_audio_output_write(const OzaynAudioOutputBuffer *buffer);
+ozayn_result_t ozayn_audio_output_stop(void);
 
 /* ================================================================
  * Platform Lifecycle
