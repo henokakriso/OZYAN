@@ -2374,6 +2374,60 @@ ozayn_result_t ozayn_storage_get_system_volume(OzaynStorageInfo *info) {
 }
 
 /* ================================================================
+ * AA. USB & Peripheral Device Enumeration Abstraction (Step 27)
+ * ================================================================
+ * Stub: macOS peripheral abstraction requires IOKit.
+ */
+
+static int _ozayn_peripheral_initialized = 0;
+
+ozayn_result_t ozayn_peripheral_init(void) {
+    if (_ozayn_peripheral_initialized) return OZAYN_OK;
+    _ozayn_peripheral_initialized = 1;
+    return OZAYN_OK;
+}
+
+void ozayn_peripheral_shutdown(void) {
+    _ozayn_peripheral_initialized = 0;
+}
+
+int ozayn_peripheral_is_available(void) {
+    return 0; /* Stub */
+}
+
+size_t ozayn_peripheral_get_count(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_peripheral_get_info(size_t index, OzaynPeripheralInfo *info) {
+    (void)index;
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(*info));
+    info->index = 0;
+    info->type = OZAYN_PERIPHERAL_UNKNOWN;
+    info->vendor_id = -1;
+    info->product_id = -1;
+    info->available = 0;
+    return OZAYN_ERR;
+}
+
+const char *ozayn_peripheral_type_name(OzaynPeripheralType type) {
+    switch (type) {
+        case OZAYN_PERIPHERAL_UNKNOWN:     return "Unknown";
+        case OZAYN_PERIPHERAL_USB:         return "USB";
+        case OZAYN_PERIPHERAL_CAMERA:      return "Camera";
+        case OZAYN_PERIPHERAL_MICROPHONE:  return "Microphone";
+        case OZAYN_PERIPHERAL_AUDIO_OUTPUT: return "Audio Output";
+        case OZAYN_PERIPHERAL_KEYBOARD:    return "Keyboard";
+        case OZAYN_PERIPHERAL_MOUSE:       return "Mouse";
+        case OZAYN_PERIPHERAL_STORAGE:     return "Storage";
+        case OZAYN_PERIPHERAL_DISPLAY:     return "Display";
+        case OZAYN_PERIPHERAL_OTHER:       return "Other";
+        default:                           return "Unknown";
+    }
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 

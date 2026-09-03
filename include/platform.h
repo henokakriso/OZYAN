@@ -42,6 +42,7 @@
  *   X. System Font & Text Rendering Information Abstraction (Step 24)
  *   Y. System Hardware Sensors Abstraction (Step 25)
  *   Z. System Storage & Disk Information Abstraction (Step 26)
+ *   AA. USB & Peripheral Device Enumeration Abstraction (Step 27)
  */
 
 /* ================================================================
@@ -1405,6 +1406,65 @@ int  ozayn_storage_is_available(void);
 int  ozayn_storage_get_count(void);
 ozayn_result_t ozayn_storage_get_info(int index, OzaynStorageInfo *info);
 ozayn_result_t ozayn_storage_get_system_volume(OzaynStorageInfo *info);
+
+/* ================================================================
+ * AA. USB & Peripheral Device Enumeration Abstraction (Step 27)
+ * ================================================================
+ *
+ * Cross-platform USB and peripheral device discovery and enumeration.
+ * Read-only — no device control, no driver installation, no ejection.
+ * Discovers connected devices with type, name, and vendor/product info.
+ */
+
+/* ---- Peripheral Types ---- */
+
+typedef enum {
+    OZAYN_PERIPHERAL_UNKNOWN = 0,
+    OZAYN_PERIPHERAL_USB,
+    OZAYN_PERIPHERAL_CAMERA,
+    OZAYN_PERIPHERAL_MICROPHONE,
+    OZAYN_PERIPHERAL_AUDIO_OUTPUT,
+    OZAYN_PERIPHERAL_KEYBOARD,
+    OZAYN_PERIPHERAL_MOUSE,
+    OZAYN_PERIPHERAL_STORAGE,
+    OZAYN_PERIPHERAL_DISPLAY,
+    OZAYN_PERIPHERAL_OTHER
+} OzaynPeripheralType;
+
+/* ---- Peripheral Information ---- */
+
+typedef struct {
+    size_t index;
+
+    OzaynPeripheralType type;
+
+    char id[256];
+    char name[256];
+    char manufacturer[256];
+    char description[512];
+
+    char connection[64];
+
+    int vendor_id;
+    int product_id;
+
+    int available;
+} OzaynPeripheralInfo;
+
+/* ---- Peripheral Lifecycle ---- */
+
+ozayn_result_t ozayn_peripheral_init(void);
+void           ozayn_peripheral_shutdown(void);
+
+/* ---- Peripheral Queries ---- */
+
+int  ozayn_peripheral_is_available(void);
+size_t ozayn_peripheral_get_count(void);
+ozayn_result_t ozayn_peripheral_get_info(size_t index, OzaynPeripheralInfo *info);
+
+/* ---- Peripheral Type Names ---- */
+
+const char *ozayn_peripheral_type_name(OzaynPeripheralType type);
 
 /* ================================================================
  * Platform Lifecycle

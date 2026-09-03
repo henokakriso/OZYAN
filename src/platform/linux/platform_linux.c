@@ -4422,6 +4422,302 @@ ozayn_result_t ozayn_storage_get_system_volume(OzaynStorageInfo *info) {
 }
 
 /* ================================================================
+ * AA. USB & Peripheral Device Enumeration Abstraction (Step 27)
+ * ================================================================
+ *
+ * Cross-platform USB and peripheral device discovery and enumeration.
+ * Uses /sys filesystem on Linux.
+ * Read-only — no device control, no driver installation, no ejection.
+ */
+
+#include <dirent.h>
+#include <stdlib.h>
+
+static int _ozayn_peripheral_initialized = 0;
+#define OZAYN_MAX_PERIPHERALS 256
+
+static OzaynPeripheralInfo _ozayn_peripherals[OZAYN_MAX_PERIPHERALS];
+static size_t _ozayn_peripheral_count = 0;
+
+/* Internal helper: read sysfs attribute */
+static int _ozayn_read_sysfs_attr(const char *path, char *buf, size_t buf_size) {
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    if (fgets(buf, buf_size, f)) {
+        size_t len = strlen(buf);
+        while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r')) {
+            buf[--len] = '\0';
+        }
+        fclose(f);
+        return 1;
+    }
+    fclose(f);
+    return 0;
+}
+
+/* Internal helper: scan USB devices */
+static void _ozayn_scan_usb_devices(void) {
+    DIR *dir = opendir("/sys/bus/usb/devices");
+    if (!dir) return;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (_ozayn_peripheral_count >= OZAYN_MAX_PERIPHERALS) break;
+        if (entry->d_name[0] == '.') continue;
+
+        /* Skip interfaces (contain ':') */
+        if (strchr(entry->d_name, ':')) continue;
+
+        char devpath[512];
+        snprintf(devpath, sizeof(devpath), "/sys/bus/usb/devices/%s", entry->d_name);
+
+        /* Check if this is a real USB device (has idVendor) */
+        char vendor_path[512];
+        snprintf(vendor_path, sizeof(vendor_path), "%s/idVendor", devpath);
+        if (access(vendor_path, F_OK) != 0) continue;
+
+        OzaynPeripheralInfo *info = &_ozayn_peripherals[_ozayn_peripheral_count];
+        memset(info, 0, sizeof(*info));
+        info->index = _ozayn_peripheral_count;
+        info->available = 1;
+        info->type = OZAYN_PERIPHERAL_USB;
+
+        /* Read vendor/product IDs */
+        char vid_buf[16] = {0}, pid_buf[16] = {0};
+        char prod_path[512], manuf_path[512], prodname_path[512];
+
+        snprintf(prod_path, sizeof(prod_path), "%s/idProduct", devpath);
+        snprintf(manuf_path, sizeof(manuf_path), "%s/manufacturer", devpath);
+        snprintf(prodname_path, sizeof(prodname_path), "%s/product", devpath);
+
+        if (_ozayn_read_sysfs_attr(vendor_path, vid_buf, sizeof(vid_buf)))
+            info->vendor_id = (int)strtol(vid_buf, NULL, 16);
+        if (_ozayn_read_sysfs_attr(prod_path, pid_buf, sizeof(pid_buf)))
+            info->product_id = (int)strtol(pid_buf, NULL, 16);
+
+        /* Read name */
+        char name_buf[256] = {0};
+        if (_ozayn_read_sysfs_attr(prodname_path, name_buf, sizeof(name_buf))) {
+            strncpy(info->name, name_buf, sizeof(info->name) - 1);
+        } else {
+            snprintf(info->name, sizeof(info->name), "USB Device %s", entry->d_name);
+        }
+
+        /* Read manufacturer */
+        char manuf_buf[256] = {0};
+        if (_ozayn_read_sysfs_attr(manuf_path, manuf_buf, sizeof(manuf_buf)))
+            strncpy(info->manufacturer, manuf_buf, sizeof(info->manufacturer) - 1);
+
+        /* ID */
+        strncpy(info->id, entry->d_name, sizeof(info->id) - 1);
+        strncpy(info->connection, "USB", sizeof(info->connection) - 1);
+
+        /* Try to detect more specific type */
+        char class_path[512], class_buf[64] = {0};
+        snprintf(class_path, sizeof(class_path), "%s/bDeviceClass", devpath);
+        if (_ozayn_read_sysfs_attr(class_path, class_buf, sizeof(class_buf))) {
+            int class_val = atoi(class_buf);
+            switch (class_val) {
+                case 1: info->type = OZAYN_PERIPHERAL_AUDIO_OUTPUT; break;
+                case 2: info->type = OZAYN_PERIPHERAL_DISPLAY; break;
+                case 3: info->type = OZAYN_PERIPHERAL_KEYBOARD; break;
+                case 8: info->type = OZAYN_PERIPHERAL_STORAGE; break;
+                case 0xE: info->type = OZAYN_PERIPHERAL_CAMERA; break;
+            }
+        }
+
+        /* Description */
+        char prod_buf[256] = {0};
+        if (_ozayn_read_sysfs_attr(prodname_path, prod_buf, sizeof(prod_buf)))
+            strncpy(info->description, prod_buf, sizeof(info->description) - 1);
+
+        _ozayn_peripheral_count++;
+    }
+    closedir(dir);
+}
+
+/* Internal helper: scan input devices */
+static void _ozayn_scan_input_devices(void) {
+    DIR *dir = opendir("/sys/class/input");
+    if (!dir) return;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (_ozayn_peripheral_count >= OZAYN_MAX_PERIPHERALS) break;
+        if (entry->d_name[0] == '.') continue;
+        /* Only scan event* devices */
+        if (strncmp(entry->d_name, "event", 5) != 0) continue;
+
+        char devpath[512];
+        snprintf(devpath, sizeof(devpath), "/sys/class/input/%s", entry->d_name);
+
+        /* Check if device has a name */
+        char name_path[512], name_buf[256] = {0};
+        snprintf(name_path, sizeof(name_path), "%s/name", devpath);
+        if (!_ozayn_read_sysfs_attr(name_path, name_buf, sizeof(name_buf))) continue;
+
+        /* Skip if already enumerated as USB */
+        int dup = 0;
+        for (size_t i = 0; i < _ozayn_peripheral_count; i++) {
+            if (strcmp(_ozayn_peripherals[i].name, name_buf) == 0) { dup = 1; break; }
+        }
+        if (dup) continue;
+
+        OzaynPeripheralInfo *info = &_ozayn_peripherals[_ozayn_peripheral_count];
+        memset(info, 0, sizeof(*info));
+        info->index = _ozayn_peripheral_count;
+        info->available = 1;
+
+        /* Detect type */
+        char *lower = name_buf;
+        while (*lower) { *lower = tolower(*lower); lower++; }
+        if (strstr(name_buf, "mouse") || strstr(name_buf, "trackball") || strstr(name_buf, "touchpad"))
+            info->type = OZAYN_PERIPHERAL_MOUSE;
+        else
+            info->type = OZAYN_PERIPHERAL_KEYBOARD;
+
+        strncpy(info->name, name_buf, sizeof(info->name) - 1);
+        strncpy(info->id, entry->d_name, sizeof(info->id) - 1);
+        strncpy(info->connection, "Input", sizeof(info->connection) - 1);
+
+        _ozayn_peripheral_count++;
+    }
+    closedir(dir);
+}
+
+/* Internal helper: scan video devices (cameras) */
+static void _ozayn_scan_video_devices(void) {
+    DIR *dir = opendir("/sys/class/video4linux");
+    if (!dir) return;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (_ozayn_peripheral_count >= OZAYN_MAX_PERIPHERALS) break;
+        if (entry->d_name[0] == '.') continue;
+
+        char devpath[512];
+        snprintf(devpath, sizeof(devpath), "/sys/class/video4linux/%s", entry->d_name);
+
+        char name_path[512], name_buf[256] = {0};
+        snprintf(name_path, sizeof(name_path), "%s/name", devpath);
+        if (!_ozayn_read_sysfs_attr(name_path, name_buf, sizeof(name_buf)))
+            snprintf(name_buf, sizeof(name_buf), "Camera %s", entry->d_name);
+
+        OzaynPeripheralInfo *info = &_ozayn_peripherals[_ozayn_peripheral_count];
+        memset(info, 0, sizeof(*info));
+        info->index = _ozayn_peripheral_count;
+        info->available = 1;
+        info->type = OZAYN_PERIPHERAL_CAMERA;
+        strncpy(info->name, name_buf, sizeof(info->name) - 1);
+        strncpy(info->id, entry->d_name, sizeof(info->id) - 1);
+        strncpy(info->connection, "V4L2", sizeof(info->connection) - 1);
+
+        _ozayn_peripheral_count++;
+    }
+    closedir(dir);
+}
+
+/* Internal helper: scan sound devices */
+static void _ozayn_scan_sound_devices(void) {
+    DIR *dir = opendir("/sys/class/sound");
+    if (!dir) return;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (_ozayn_peripheral_count >= OZAYN_MAX_PERIPHERALS) break;
+        if (entry->d_name[0] == '.') continue;
+        /* Only scan card* devices */
+        if (strncmp(entry->d_name, "card", 4) != 0) continue;
+
+        char devpath[512];
+        snprintf(devpath, sizeof(devpath), "/sys/class/sound/%s", entry->d_name);
+
+        char name_path[512], name_buf[256] = {0};
+        snprintf(name_path, sizeof(name_path), "%s/name", devpath);
+        if (!_ozayn_read_sysfs_attr(name_path, name_buf, sizeof(name_buf)))
+            snprintf(name_buf, sizeof(name_buf), "Audio %s", entry->d_name);
+
+        OzaynPeripheralInfo *info = &_ozayn_peripherals[_ozayn_peripheral_count];
+        memset(info, 0, sizeof(*info));
+        info->index = _ozayn_peripheral_count;
+        info->available = 1;
+        info->type = OZAYN_PERIPHERAL_AUDIO_OUTPUT;
+        strncpy(info->name, name_buf, sizeof(info->name) - 1);
+        strncpy(info->id, entry->d_name, sizeof(info->id) - 1);
+        strncpy(info->connection, "ALSA", sizeof(info->connection) - 1);
+
+        _ozayn_peripheral_count++;
+    }
+    closedir(dir);
+}
+
+ozayn_result_t ozayn_peripheral_init(void) {
+    if (_ozayn_peripheral_initialized) return OZAYN_OK;
+    _ozayn_peripheral_count = 0;
+    memset(_ozayn_peripherals, 0, sizeof(_ozayn_peripherals));
+
+    _ozayn_scan_usb_devices();
+    _ozayn_scan_input_devices();
+    _ozayn_scan_video_devices();
+    _ozayn_scan_sound_devices();
+
+    _ozayn_peripheral_initialized = 1;
+    LOG_INFO("PERIPHERAL", "Peripheral subsystem initialized (%zu devices)", _ozayn_peripheral_count);
+    return OZAYN_OK;
+}
+
+void ozayn_peripheral_shutdown(void) {
+    if (!_ozayn_peripheral_initialized) return;
+    _ozayn_peripheral_count = 0;
+    _ozayn_peripheral_initialized = 0;
+    LOG_INFO("PERIPHERAL", "Peripheral subsystem shut down");
+}
+
+int ozayn_peripheral_is_available(void) {
+    if (!_ozayn_peripheral_initialized) return 0;
+    return _ozayn_peripheral_count > 0 ? 1 : 0;
+}
+
+size_t ozayn_peripheral_get_count(void) {
+    if (!_ozayn_peripheral_initialized) return 0;
+    return _ozayn_peripheral_count;
+}
+
+ozayn_result_t ozayn_peripheral_get_info(size_t index, OzaynPeripheralInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_peripheral_initialized) return OZAYN_ERR;
+
+    /* Initialize output safely */
+    memset(info, 0, sizeof(*info));
+    info->index = 0;
+    info->type = OZAYN_PERIPHERAL_UNKNOWN;
+    info->vendor_id = -1;
+    info->product_id = -1;
+    info->available = 0;
+
+    if (index >= _ozayn_peripheral_count) return OZAYN_ERR;
+
+    *info = _ozayn_peripherals[index];
+    return OZAYN_OK;
+}
+
+const char *ozayn_peripheral_type_name(OzaynPeripheralType type) {
+    switch (type) {
+        case OZAYN_PERIPHERAL_UNKNOWN:     return "Unknown";
+        case OZAYN_PERIPHERAL_USB:         return "USB";
+        case OZAYN_PERIPHERAL_CAMERA:      return "Camera";
+        case OZAYN_PERIPHERAL_MICROPHONE:  return "Microphone";
+        case OZAYN_PERIPHERAL_AUDIO_OUTPUT: return "Audio Output";
+        case OZAYN_PERIPHERAL_KEYBOARD:    return "Keyboard";
+        case OZAYN_PERIPHERAL_MOUSE:       return "Mouse";
+        case OZAYN_PERIPHERAL_STORAGE:     return "Storage";
+        case OZAYN_PERIPHERAL_DISPLAY:     return "Display";
+        case OZAYN_PERIPHERAL_OTHER:       return "Other";
+        default:                           return "Unknown";
+    }
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

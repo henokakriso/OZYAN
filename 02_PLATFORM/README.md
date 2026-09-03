@@ -2306,6 +2306,90 @@ Tests verify:
 - Shutdown safety
 - Capacity validation (available <= total)
 
+## Step 27 — USB & Peripheral Device Enumeration Abstraction
+
+Cross-platform USB and peripheral device discovery and enumeration. Read-only — no device control, no driver installation, no ejection. Discovers connected devices with type, name, and vendor/product info.
+
+### Device Types
+
+```
+UNKNOWN, USB, CAMERA, MICROPHONE, AUDIO_OUTPUT,
+KEYBOARD, MOUSE, STORAGE, DISPLAY, OTHER
+```
+
+### Public API
+
+```c
+ozayn_result_t ozayn_peripheral_init(void);
+void           ozayn_peripheral_shutdown(void);
+int            ozayn_peripheral_is_available(void);
+size_t         ozayn_peripheral_get_count(void);
+ozayn_result_t ozayn_peripheral_get_info(size_t index, OzaynPeripheralInfo *info);
+const char    *ozayn_peripheral_type_name(OzaynPeripheralType type);
+```
+
+### Peripheral Information Structure
+
+```c
+typedef struct {
+    size_t index;
+    OzaynPeripheralType type;
+    char id[256];
+    char name[256];
+    char manufacturer[256];
+    char description[512];
+    char connection[64];
+    int vendor_id;
+    int product_id;
+    int available;
+} OzaynPeripheralInfo;
+```
+
+### Safety
+
+- Read-only enumeration — no device control, no ejection
+- NULL parameters handled safely
+- Large index values rejected safely
+- Unavailable vendor/product IDs set to -1
+- No root/admin privileges required
+- No device modification, no driver installation
+
+### Platform Implementations
+
+- Linux: `/sys` filesystem (USB devices, input, video4linux, sound, block)
+- macOS: Stub (requires IOKit)
+- Windows: Stub (requires SetupAPI)
+
+### Device Enumeration
+
+- Scans `/sys/bus/usb/devices/` for USB devices
+- Scans `/sys/class/input/` for keyboards/mice
+- Scans `/sys/class/video4linux/` for cameras
+- Scans `/sys/class/sound/` for audio devices
+- Deduplicates devices already found as USB
+- USB device class detection for type classification
+
+### Read-Only Model
+
+- DISCOVER, ENUMERATE, IDENTIFY, REPORT only
+- No driver installation, no device enable/disable
+- No ejection, no formatting, no firmware updates
+- No device modification of any kind
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Device count (before/after init)
+- Enumeration (null, before init, large index, valid, multiple)
+- Type names (all types + invalid enum)
+- Shutdown safety
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2334,4 +2418,5 @@ Tests verify:
 - [x] Step 24: System Font & Text Rendering Information Abstraction
 - [x] Step 25: System Hardware Sensors Abstraction
 - [x] Step 26: System Storage & Disk Information Abstraction
-- [ ] Steps 27-35: (future)
+- [x] Step 27: USB & Peripheral Device Enumeration Abstraction
+- [ ] Steps 28-35: (future)
