@@ -3717,6 +3717,131 @@ ozayn_result_t ozayn_brightness_get_supported(int *supported) {
 }
 
 /* ================================================================
+ * W. System Theme & Appearance Abstraction (Step 23)
+ * ================================================================
+ *
+ * Cross-platform system theme/appearance detection.
+ * Uses environment variables commonly set by desktop environments.
+ * Read-only — no theme modification, no color changes.
+ */
+
+static int _ozayn_appearance_initialized = 0;
+
+/* Internal helper: convert string to lowercase for comparison */
+static void _ozayn_str_to_lower(const char *src, char *dst, size_t dst_size) {
+    size_t i = 0;
+    while (src[i] && i < dst_size - 1) {
+        char c = src[i];
+        if (c >= 'A' && c <= 'Z') c += 32;
+        dst[i] = c;
+        i++;
+    }
+    dst[i] = '\0';
+}
+
+/* Internal helper: check if string contains a dark indicator */
+static int _ozayn_str_contains_dark(const char *str) {
+    if (!str) return 0;
+    char lower[256];
+    _ozayn_str_to_lower(str, lower, sizeof(lower));
+    return (strstr(lower, "dark") != NULL || strstr(lower, "inverse") != NULL);
+}
+
+/* Internal helper: check if string contains a light indicator */
+static int _ozayn_str_contains_light(const char *str) {
+    if (!str) return 0;
+    char lower[256];
+    _ozayn_str_to_lower(str, lower, sizeof(lower));
+    return (strstr(lower, "light") != NULL || strstr(lower, "default") != NULL);
+}
+
+/* Internal helper: detect theme from multiple environment variables */
+static OzaynAppearance _ozayn_detect_theme(void) {
+    /* Check multiple environment variables used by different DEs */
+
+    /* GTK_THEME — used by GTK-based desktops (GNOME, XFCE, etc.) */
+    const char *gtk_theme = getenv("GTK_THEME");
+    if (gtk_theme && *gtk_theme) {
+        if (_ozayn_str_contains_dark(gtk_theme)) return OZAYN_APPEARANCE_DARK;
+        if (_ozayn_str_contains_light(gtk_theme)) return OZAYN_APPEARANCE_LIGHT;
+    }
+
+    /* COLOR_SCHEME — used by freedesktop.org portal settings */
+    const char *color_scheme = getenv("COLOR_SCHEME");
+    if (color_scheme && *color_scheme) {
+        if (_ozayn_str_contains_dark(color_scheme)) return OZAYN_APPEARANCE_DARK;
+        if (_ozayn_str_contains_light(color_scheme)) return OZAYN_APPEARANCE_LIGHT;
+    }
+
+    /* QT_THEME — used by Qt-based desktops (KDE) */
+    const char *qt_theme = getenv("QT_THEME");
+    if (qt_theme && *qt_theme) {
+        if (_ozayn_str_contains_dark(qt_theme)) return OZAYN_APPEARANCE_DARK;
+        if (_ozayn_str_contains_light(qt_theme)) return OZAYN_APPEARANCE_LIGHT;
+    }
+
+    /* KDE_SESSION_THEME — used by KDE Plasma */
+    const char *kde_theme = getenv("KDE_SESSION_THEME");
+    if (kde_theme && *kde_theme) {
+        if (_ozayn_str_contains_dark(kde_theme)) return OZAYN_APPEARANCE_DARK;
+        if (_ozayn_str_contains_light(kde_theme)) return OZAYN_APPEARANCE_LIGHT;
+    }
+
+    /* GNOME_SETTINGS_SCHEMA — check if we're on GNOME with dark preference */
+    const char *gnome_prefers = getenv("GDMSESSION");
+    if (gnome_prefers && *gnome_prefers) {
+        /* Some GNOME sessions set color scheme via portal */
+        const char *portal_scheme = getenv("XDG_DESKTOP_PORTAL_CONFIG");
+        if (portal_scheme && *portal_scheme) {
+            if (_ozayn_str_contains_dark(portal_scheme)) return OZAYN_APPEARANCE_DARK;
+            if (_ozayn_str_contains_light(portal_scheme)) return OZAYN_APPEARANCE_LIGHT;
+        }
+    }
+
+    /* DARKMODE — generic dark mode flag used by some tools */
+    const char *dark_mode = getenv("DARKMODE");
+    if (dark_mode && *dark_mode) {
+        if (strcmp(dark_mode, "1") == 0) return OZAYN_APPEARANCE_DARK;
+        if (strcmp(dark_mode, "0") == 0) return OZAYN_APPEARANCE_LIGHT;
+    }
+
+    /* No reliable theme information found */
+    return OZAYN_APPEARANCE_UNKNOWN;
+}
+
+ozayn_result_t ozayn_appearance_init(void) {
+    if (_ozayn_appearance_initialized) return OZAYN_OK;
+    _ozayn_appearance_initialized = 1;
+    LOG_INFO("APPEAR", "Appearance subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_appearance_shutdown(void) {
+    if (!_ozayn_appearance_initialized) return;
+    _ozayn_appearance_initialized = 0;
+    LOG_INFO("APPEAR", "Appearance subsystem shut down");
+}
+
+int ozayn_appearance_is_available(void) {
+    if (!_ozayn_appearance_initialized) return 0;
+    return 1;
+}
+
+OzaynAppearance ozayn_appearance_get(void) {
+    if (!_ozayn_appearance_initialized) return OZAYN_APPEARANCE_UNKNOWN;
+    return _ozayn_detect_theme();
+}
+
+const char *ozayn_appearance_name(OzaynAppearance appearance) {
+    switch (appearance) {
+        case OZAYN_APPEARANCE_UNKNOWN: return "Unknown";
+        case OZAYN_APPEARANCE_LIGHT:   return "Light";
+        case OZAYN_APPEARANCE_DARK:    return "Dark";
+        default:                       return "Invalid";
+    }
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

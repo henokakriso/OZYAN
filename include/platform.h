@@ -38,6 +38,7 @@
  *   T. System Audio Volume & Mute Abstraction (Step 20)
  *   U. System Lock State & Session Control Abstraction (Step 21)
  *   V. System Brightness & Display Power Abstraction (Step 22)
+ *   W. System Theme & Appearance Abstraction (Step 23)
  */
 
 /* ================================================================
@@ -1255,6 +1256,34 @@ ozayn_result_t ozayn_brightness_get_supported(int *supported);
 /* ---- Brightness Control ---- */
 
 ozayn_result_t ozayn_brightness_set(int brightness);
+
+/* ================================================================
+ * W. System Theme & Appearance Abstraction (Step 23)
+ * ================================================================
+ *
+ * Cross-platform system theme/appearance detection.
+ * Read-only — no theme modification, no color changes.
+ * Detects light/dark mode from OS settings.
+ */
+
+/* ---- Appearance Types ---- */
+
+typedef enum {
+    OZAYN_APPEARANCE_UNKNOWN = 0,
+    OZAYN_APPEARANCE_LIGHT,
+    OZAYN_APPEARANCE_DARK
+} OzaynAppearance;
+
+/* ---- Appearance Lifecycle ---- */
+
+ozayn_result_t ozayn_appearance_init(void);
+void           ozayn_appearance_shutdown(void);
+
+/* ---- Appearance Queries ---- */
+
+int             ozayn_appearance_is_available(void);
+OzaynAppearance ozayn_appearance_get(void);
+const char     *ozayn_appearance_name(OzaynAppearance appearance);
 
 /* ================================================================
  * Platform Lifecycle

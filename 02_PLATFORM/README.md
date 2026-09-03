@@ -1980,6 +1980,77 @@ Tests verify:
 - Brightness set (negative, over 101, before init, set+restore)
 - Original brightness restoration
 
+## Step 23 — System Theme & Appearance Abstraction
+
+Cross-platform system theme/appearance detection. Read-only — no theme modification, no color changes. Detects light/dark mode from OS settings.
+
+### Appearance Lifecycle
+
+```
+ozayn_appearance_init()
+        ↓
+detect theme
+        ↓
+ozayn_appearance_shutdown()
+```
+
+### Public API
+
+```c
+/* Appearance Lifecycle */
+ozayn_result_t ozayn_appearance_init(void);
+void           ozayn_appearance_shutdown(void);
+
+/* Appearance Queries */
+int             ozayn_appearance_is_available(void);
+OzaynAppearance ozayn_appearance_get(void);
+const char     *ozayn_appearance_name(OzaynAppearance appearance);
+```
+
+### Appearance Types
+
+```c
+OZAYN_APPEARANCE_UNKNOWN — Cannot determine
+OZAYN_APPEARANCE_LIGHT   — Light theme
+OZAYN_APPEARANCE_DARK    — Dark theme
+```
+
+### Safety
+
+- Read-only detection — no theme modification
+- No wallpaper changes, no color changes
+- No registry/modification of settings
+- NULL parameters handled safely
+- Headless systems return UNKNOWN
+
+### Platform Implementations
+
+- Linux: Environment variables (GTK_THEME, COLOR_SCHEME, QT_THEME, KDE_SESSION_THEME)
+- macOS: Stub (requires NSAppearance framework)
+- Windows: Stub (requires UxTheme/registry)
+
+### Theme Detection Sources (Linux)
+
+- `GTK_THEME` — GTK-based desktops (GNOME, XFCE)
+- `COLOR_SCHEME` — freedesktop.org portal settings
+- `QT_THEME` — Qt-based desktops (KDE)
+- `KDE_SESSION_THEME` — KDE Plasma
+- `DARKMODE` — generic dark mode flag
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Appearance query (before/after init, valid states)
+- Name conversion (all valid + invalid)
+- Unknown/Light/Dark name strings
+- Invalid enum value handling
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2004,4 +2075,5 @@ Tests verify:
 - [x] Step 20: System Audio Volume & Mute Abstraction
 - [x] Step 21: System Lock State & Session Control Abstraction
 - [x] Step 22: System Brightness & Display Power Abstraction
-- [ ] Steps 23-35: (future)
+- [x] Step 23: System Theme & Appearance Abstraction
+- [ ] Steps 24-35: (future)

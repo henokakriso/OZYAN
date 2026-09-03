@@ -1778,6 +1778,48 @@ ozayn_result_t ozayn_brightness_get_supported(int *supported) {
 }
 
 /* ================================================================
+ * W. System Theme & Appearance Abstraction (Step 23)
+ * ================================================================
+ *
+ * Windows stub — requires UxTheme/registry for full implementation.
+ * Reports unknown without proper API access.
+ */
+
+static int _ozayn_appearance_initialized = 0;
+
+ozayn_result_t ozayn_appearance_init(void) {
+    if (_ozayn_appearance_initialized) return OZAYN_OK;
+    _ozayn_appearance_initialized = 1;
+    LOG_INFO("APPEAR", "Appearance subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_appearance_shutdown(void) {
+    if (!_ozayn_appearance_initialized) return;
+    _ozayn_appearance_initialized = 0;
+    LOG_INFO("APPEAR", "Appearance subsystem shut down");
+}
+
+int ozayn_appearance_is_available(void) {
+    if (!_ozayn_appearance_initialized) return 0;
+    return 0;
+}
+
+OzaynAppearance ozayn_appearance_get(void) {
+    if (!_ozayn_appearance_initialized) return OZAYN_APPEARANCE_UNKNOWN;
+    return OZAYN_APPEARANCE_UNKNOWN;
+}
+
+const char *ozayn_appearance_name(OzaynAppearance appearance) {
+    switch (appearance) {
+        case OZAYN_APPEARANCE_UNKNOWN: return "Unknown";
+        case OZAYN_APPEARANCE_LIGHT:   return "Light";
+        case OZAYN_APPEARANCE_DARK:    return "Dark";
+        default:                       return "Invalid";
+    }
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *
