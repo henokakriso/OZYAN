@@ -2283,6 +2283,54 @@ const char *ozayn_platform_name(void) {
 }
 
 /* ================================================================
+ * Y. System Hardware Sensors Abstraction (Step 25)
+ * ================================================================
+ * Stub: macOS sensor abstraction requires IOKit/CoreFoundation.
+ */
+
+static int _ozayn_sensors_initialized = 0;
+
+ozayn_result_t ozayn_sensors_init(void) {
+    if (_ozayn_sensors_initialized) return OZAYN_OK;
+    _ozayn_sensors_initialized = 1;
+    return OZAYN_OK;
+}
+
+void ozayn_sensors_shutdown(void) {
+    _ozayn_sensors_initialized = 0;
+}
+
+int ozayn_sensors_is_available(void) {
+    return 0; /* Stub */
+}
+
+int ozayn_sensors_get_count(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_sensors_get_info(int index, OzaynSensorInfo *info) {
+    (void)index;
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(*info));
+    info->index = -1;
+    info->type = OZAYN_SENSOR_UNKNOWN;
+    info->available = 0;
+    return OZAYN_ERR;
+}
+
+const char *ozayn_sensor_type_name(OzaynSensorType type) {
+    switch (type) {
+        case OZAYN_SENSOR_UNKNOWN:     return "Unknown";
+        case OZAYN_SENSOR_TEMPERATURE: return "Temperature";
+        case OZAYN_SENSOR_FAN:         return "Fan";
+        case OZAYN_SENSOR_VOLTAGE:     return "Voltage";
+        case OZAYN_SENSOR_CURRENT:     return "Current";
+        case OZAYN_SENSOR_POWER:       return "Power";
+        default:                       return "Unknown";
+    }
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 

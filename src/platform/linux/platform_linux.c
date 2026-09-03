@@ -3991,6 +3991,245 @@ ozayn_result_t ozayn_font_get_default(char *family, size_t family_size) {
 }
 
 /* ================================================================
+ * Y. System Hardware Sensors Abstraction (Step 25)
+ * ================================================================
+ *
+ * Cross-platform hardware sensor discovery and reading.
+ * Uses /sys/class/hwmon/ interface on Linux.
+ * Read-only — no hardware control, no fan speed control.
+ */
+
+static int _ozayn_sensors_initialized = 0;
+
+/* Internal helper: read a sysfs file as integer */
+static int _ozayn_read_sysfs_int(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+    int val = -1;
+    if (fscanf(f, "%d", &val) != 1) val = -1;
+    fclose(f);
+    return val;
+}
+
+/* Internal helper: read a sysfs file as string */
+static int _ozayn_read_sysfs_str(const char *path, char *buf, size_t buf_size) {
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    if (fgets(buf, buf_size, f)) {
+        /* Trim trailing newline */
+        size_t len = strlen(buf);
+        while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r')) {
+            buf[--len] = '\0';
+        }
+        fclose(f);
+        return 1;
+    }
+    fclose(f);
+    return 0;
+}
+
+/* Internal helper: detect sensor type from filename */
+static OzaynSensorType _ozayn_detect_sensor_type(const char *name) {
+    if (strstr(name, "temp")) return OZAYN_SENSOR_TEMPERATURE;
+    if (strstr(name, "fan")) return OZAYN_SENSOR_FAN;
+    if (strstr(name, "in")) return OZAYN_SENSOR_VOLTAGE;
+    if (strstr(name, "curr")) return OZAYN_SENSOR_CURRENT;
+    if (strstr(name, "power")) return OZAYN_SENSOR_POWER;
+    return OZAYN_SENSOR_UNKNOWN;
+}
+
+/* Internal helper: get unit for sensor type */
+static const char *_ozayn_get_unit(OzaynSensorType type) {
+    switch (type) {
+        case OZAYN_SENSOR_TEMPERATURE: return "°C";
+        case OZAYN_SENSOR_FAN:         return "RPM";
+        case OZAYN_SENSOR_VOLTAGE:     return "V";
+        case OZAYN_SENSOR_CURRENT:     return "A";
+        case OZAYN_SENSOR_POWER:       return "W";
+        default:                       return "";
+    }
+}
+
+/* Internal helper: count total sensors across all hwmon devices */
+static int _ozayn_count_sensors(void) {
+    int count = 0;
+    DIR *base = opendir("/sys/class/hwmon");
+    if (!base) return 0;
+
+    struct dirent *hwmon;
+    while ((hwmon = readdir(base)) != NULL) {
+        if (hwmon->d_name[0] == '.') continue;
+
+        char hwmon_path[256];
+        snprintf(hwmon_path, sizeof(hwmon_path), "/sys/class/hwmon/%s", hwmon->d_name);
+
+        DIR *hwmon_dir = opendir(hwmon_path);
+        if (!hwmon_dir) continue;
+
+        struct dirent *entry;
+        while ((entry = readdir(hwmon_dir)) != NULL) {
+            if (entry->d_name[0] == '.') continue;
+            /* Check for sensor files: temp*_input, fan*_input, in*_input, etc. */
+            if (strstr(entry->d_name, "_input")) {
+                count++;
+            }
+        }
+        closedir(hwmon_dir);
+    }
+    closedir(base);
+    return count;
+}
+
+/* Internal helper: fill sensor info by global index */
+static int _ozayn_get_sensor_at_index(int index, OzaynSensorInfo *info) {
+    int current = 0;
+    DIR *base = opendir("/sys/class/hwmon");
+    if (!base) return 0;
+
+    struct dirent *hwmon;
+    while ((hwmon = readdir(base)) != NULL) {
+        if (hwmon->d_name[0] == '.') continue;
+
+        char hwmon_path[256];
+        snprintf(hwmon_path, sizeof(hwmon_path), "/sys/class/hwmon/%s", hwmon->d_name);
+
+        /* Read hwmon name */
+        char hwmon_name[256] = {0};
+        char name_path[256];
+        snprintf(name_path, sizeof(name_path), "%s/name", hwmon_path);
+        _ozayn_read_sysfs_str(name_path, hwmon_name, sizeof(hwmon_name));
+
+        DIR *hwmon_dir = opendir(hwmon_path);
+        if (!hwmon_dir) continue;
+
+        struct dirent *entry;
+        while ((entry = readdir(hwmon_dir)) != NULL) {
+            if (entry->d_name[0] == '.') continue;
+            if (!strstr(entry->d_name, "_input")) continue;
+
+            if (current == index) {
+                /* Found the sensor — extract info */
+                char input_path[256];
+                snprintf(input_path, sizeof(input_path), "%s/%s", hwmon_path, entry->d_name);
+
+                /* Get base name (remove _input suffix) */
+                char base_name[128];
+                strncpy(base_name, entry->d_name, sizeof(base_name) - 1);
+                base_name[sizeof(base_name) - 1] = '\0';
+                char *suffix = strstr(base_name, "_input");
+                if (suffix) *suffix = '\0';
+
+                /* Detect type */
+                info->type = _ozayn_detect_sensor_type(base_name);
+                strncpy(info->id, base_name, sizeof(info->id) - 1);
+                info->id[sizeof(info->id) - 1] = '\0';
+
+                /* Build name */
+                snprintf(info->name, sizeof(info->name), "%s %s", hwmon_name, base_name);
+
+                /* Read value */
+                int raw_val = _ozayn_read_sysfs_int(input_path);
+                if (raw_val < 0) {
+                    info->available = 0;
+                    info->value = 0.0;
+                } else {
+                    info->available = 1;
+                    /* Convert based on type */
+                    switch (info->type) {
+                        case OZAYN_SENSOR_TEMPERATURE:
+                            info->value = raw_val / 1000.0;
+                            break;
+                        case OZAYN_SENSOR_VOLTAGE:
+                            info->value = raw_val / 1000.0;
+                            break;
+                        case OZAYN_SENSOR_CURRENT:
+                            info->value = raw_val / 1000.0;
+                            break;
+                        case OZAYN_SENSOR_POWER:
+                            info->value = raw_val / 1000000.0;
+                            break;
+                        default:
+                            info->value = (double)raw_val;
+                            break;
+                    }
+                }
+
+                /* Get unit */
+                strncpy(info->unit, _ozayn_get_unit(info->type), sizeof(info->unit) - 1);
+                info->unit[sizeof(info->unit) - 1] = '\0';
+                info->index = index;
+
+                closedir(hwmon_dir);
+                closedir(base);
+                return 1;
+            }
+            current++;
+        }
+        closedir(hwmon_dir);
+    }
+    closedir(base);
+    return 0;
+}
+
+ozayn_result_t ozayn_sensors_init(void) {
+    if (_ozayn_sensors_initialized) return OZAYN_OK;
+    _ozayn_sensors_initialized = 1;
+    LOG_INFO("SENSOR", "Sensors subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_sensors_shutdown(void) {
+    if (!_ozayn_sensors_initialized) return;
+    _ozayn_sensors_initialized = 0;
+    LOG_INFO("SENSOR", "Sensors subsystem shut down");
+}
+
+int ozayn_sensors_is_available(void) {
+    if (!_ozayn_sensors_initialized) return 0;
+    return _ozayn_count_sensors() > 0 ? 1 : 0;
+}
+
+int ozayn_sensors_get_count(void) {
+    if (!_ozayn_sensors_initialized) return 0;
+    return _ozayn_count_sensors();
+}
+
+ozayn_result_t ozayn_sensors_get_info(int index, OzaynSensorInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_sensors_initialized) return OZAYN_ERR;
+
+    /* Initialize output safely */
+    info->index = -1;
+    info->type = OZAYN_SENSOR_UNKNOWN;
+    info->id[0] = '\0';
+    info->name[0] = '\0';
+    info->value = 0.0;
+    info->unit[0] = '\0';
+    info->available = 0;
+
+    if (index < 0) return OZAYN_ERR;
+
+    int count = _ozayn_count_sensors();
+    if (index >= count) return OZAYN_ERR;
+
+    if (!_ozayn_get_sensor_at_index(index, info)) return OZAYN_ERR;
+
+    return OZAYN_OK;
+}
+
+const char *ozayn_sensor_type_name(OzaynSensorType type) {
+    switch (type) {
+        case OZAYN_SENSOR_UNKNOWN:     return "Unknown";
+        case OZAYN_SENSOR_TEMPERATURE: return "Temperature";
+        case OZAYN_SENSOR_FAN:         return "Fan";
+        case OZAYN_SENSOR_VOLTAGE:     return "Voltage";
+        case OZAYN_SENSOR_CURRENT:     return "Current";
+        case OZAYN_SENSOR_POWER:       return "Power";
+        default:                       return "Unknown";
+    }
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

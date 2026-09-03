@@ -2132,6 +2132,90 @@ Tests verify:
 - Default font (null, zero size, before init, valid)
 - Shutdown safety
 
+## Step 25 — System Hardware Sensors Abstraction
+
+Cross-platform hardware sensor discovery and reading. Read-only — no hardware control, no fan speed control. Discovers temperature, fan, voltage, current, power sensors.
+
+### Sensor Types
+
+```
+TEMPERATURE  → °C (millidegrees converted)
+FAN          → RPM
+VOLTAGE      → V (millivolts converted)
+CURRENT      → A (milliamps converted)
+POWER        → W (microwatts converted)
+```
+
+### Public API
+
+```c
+ozayn_result_t ozayn_sensors_init(void);
+void           ozayn_sensors_shutdown(void);
+int            ozayn_sensors_is_available(void);
+int            ozayn_sensors_get_count(void);
+ozayn_result_t ozayn_sensors_get_info(int index, OzaynSensorInfo *info);
+const char    *ozayn_sensor_type_name(OzaynSensorType type);
+```
+
+### Sensor Information Structure
+
+```c
+typedef struct {
+    int index;
+    OzaynSensorType type;
+    char id[128];
+    char name[256];
+    double value;
+    char unit[32];
+    int available;
+} OzaynSensorInfo;
+```
+
+### Safety
+
+- Read-only discovery — no hardware control
+- No fan speed control, no voltage control
+- NULL parameters handled safely
+- Invalid indexes rejected safely
+- Unavailable sensors returned as unavailable (not zero)
+- Finite value validation (no NaN/infinity)
+- No root/admin privileges required
+
+### Platform Implementations
+
+- Linux: `/sys/class/hwmon/` interface (hwmon sysfs)
+- macOS: Stub (requires IOKit/CoreFoundation)
+- Windows: Stub (requires WMI/Open Hardware Monitor)
+
+### Sensor Enumeration
+
+- `get_count()` — returns total sensors across all hwmon devices
+- `get_info(index, &info)` — returns type, id, name, value, unit, availability
+- Scans temp*_input, fan*_input, in*_input, curr*_input, power*_input files
+- Value conversion based on sensor type (millidegrees, millivolts, etc.)
+
+### Unavailable Sensors
+
+- Desktops/VMs/containers may have no sensors
+- `is_available()` returns 0 when no sensors found
+- `get_count()` returns 0
+- No sensors available ≠ test failure
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Sensor count (before/after init)
+- Enumeration (null, before init, negative index, out of range, valid, multiple)
+- Type names (all types + invalid enum)
+- Shutdown safety
+- Measurement validation (finite values only)
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2158,4 +2242,5 @@ Tests verify:
 - [x] Step 22: System Brightness & Display Power Abstraction
 - [x] Step 23: System Theme & Appearance Abstraction
 - [x] Step 24: System Font & Text Rendering Information Abstraction
-- [ ] Steps 25-35: (future)
+- [x] Step 25: System Hardware Sensors Abstraction
+- [ ] Steps 26-35: (future)

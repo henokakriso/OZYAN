@@ -40,6 +40,7 @@
  *   V. System Brightness & Display Power Abstraction (Step 22)
  *   W. System Theme & Appearance Abstraction (Step 23)
  *   X. System Font & Text Rendering Information Abstraction (Step 24)
+ *   Y. System Hardware Sensors Abstraction (Step 25)
  */
 
 /* ================================================================
@@ -1315,6 +1316,53 @@ int  ozayn_font_is_available(void);
 int  ozayn_font_get_count(void);
 ozayn_result_t ozayn_font_get_info(int index, OzaynFontInfo *info);
 ozayn_result_t ozayn_font_get_default(char *family, size_t family_size);
+
+/* ================================================================
+ * Y. System Hardware Sensors Abstraction (Step 25)
+ * ================================================================
+ *
+ * Cross-platform hardware sensor discovery and reading.
+ * Read-only — no hardware control, no fan speed control.
+ * Discovers temperature, fan, voltage, current, power sensors.
+ */
+
+/* ---- Sensor Types ---- */
+
+typedef enum {
+    OZAYN_SENSOR_UNKNOWN = 0,
+    OZAYN_SENSOR_TEMPERATURE,
+    OZAYN_SENSOR_FAN,
+    OZAYN_SENSOR_VOLTAGE,
+    OZAYN_SENSOR_CURRENT,
+    OZAYN_SENSOR_POWER
+} OzaynSensorType;
+
+/* ---- Sensor Information ---- */
+
+typedef struct {
+    int index;
+    OzaynSensorType type;
+    char id[128];
+    char name[256];
+    double value;
+    char unit[32];
+    int available;
+} OzaynSensorInfo;
+
+/* ---- Sensor Lifecycle ---- */
+
+ozayn_result_t ozayn_sensors_init(void);
+void           ozayn_sensors_shutdown(void);
+
+/* ---- Sensor Queries ---- */
+
+int  ozayn_sensors_is_available(void);
+int  ozayn_sensors_get_count(void);
+ozayn_result_t ozayn_sensors_get_info(int index, OzaynSensorInfo *info);
+
+/* ---- Sensor Type Names ---- */
+
+const char *ozayn_sensor_type_name(OzaynSensorType type);
 
 /* ================================================================
  * Platform Lifecycle
