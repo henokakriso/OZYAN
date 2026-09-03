@@ -37,6 +37,7 @@
  *   S. System Permissions & Capability Access Abstraction (Step 19)
  *   T. System Audio Volume & Mute Abstraction (Step 20)
  *   U. System Lock State & Session Control Abstraction (Step 21)
+ *   V. System Brightness & Display Power Abstraction (Step 22)
  */
 
 /* ================================================================
@@ -1230,6 +1231,30 @@ const char       *ozayn_session_state_name(OzaynSessionState state);
 /* ---- Session Actions ---- */
 
 ozayn_result_t ozayn_session_lock(void);
+
+/* ================================================================
+ * V. System Brightness & Display Power Abstraction (Step 22)
+ * ================================================================
+ *
+ * Cross-platform display brightness query and control.
+ * Operates on the primary display only.
+ * Brightness range: 0–100 (normalized from native range).
+ */
+
+/* ---- Brightness Lifecycle ---- */
+
+ozayn_result_t ozayn_brightness_init(void);
+void           ozayn_brightness_shutdown(void);
+
+/* ---- Brightness Queries ---- */
+
+int  ozayn_brightness_is_available(void);
+ozayn_result_t ozayn_brightness_get(int *brightness);
+ozayn_result_t ozayn_brightness_get_supported(int *supported);
+
+/* ---- Brightness Control ---- */
+
+ozayn_result_t ozayn_brightness_set(int brightness);
 
 /* ================================================================
  * Platform Lifecycle

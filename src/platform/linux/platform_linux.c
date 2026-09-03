@@ -3568,6 +3568,155 @@ ozayn_result_t ozayn_session_lock(void) {
 }
 
 /* ================================================================
+ * V. System Brightness & Display Power Abstraction (Step 22)
+ * ================================================================
+ *
+ * Cross-platform display brightness query and control.
+ * Uses /sys/class/backlight/ interface on Linux.
+ * Brightness range: 0–100 (normalized from native range).
+ */
+
+static int _ozayn_brightness_initialized = 0;
+static char _ozayn_brightness_path[256] = {0};
+static int _ozayn_brightness_max = 0;
+
+/* Internal helper: find backlight device path */
+static int _ozayn_find_backlight(void) {
+    DIR *dir = opendir("/sys/class/backlight");
+    if (!dir) return 0;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+
+        char path[256];
+        snprintf(path, sizeof(path), "/sys/class/backlight/%s/brightness", entry->d_name);
+
+        struct stat st;
+        if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+            /* Check if we can read it */
+            FILE *f = fopen(path, "r");
+            if (f) {
+                fclose(f);
+                snprintf(_ozayn_brightness_path, sizeof(_ozayn_brightness_path),
+                         "/sys/class/backlight/%s", entry->d_name);
+
+                /* Read max brightness */
+                char max_path[256];
+                snprintf(max_path, sizeof(max_path), "%s/max_brightness", _ozayn_brightness_path);
+                FILE *mf = fopen(max_path, "r");
+                if (mf) {
+                    if (fscanf(mf, "%d", &_ozayn_brightness_max) != 1) {
+                        _ozayn_brightness_max = 100;
+                    }
+                    fclose(mf);
+                } else {
+                    _ozayn_brightness_max = 100;
+                }
+
+                closedir(dir);
+                return 1;
+            }
+        }
+    }
+
+    closedir(dir);
+    return 0;
+}
+
+/* Internal helper: convert native brightness to 0-100 */
+static int _ozayn_native_to_percent(int native_val, int max_val) {
+    if (max_val <= 0) return 0;
+    int percent = (native_val * 100) / max_val;
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    return percent;
+}
+
+/* Internal helper: convert 0-100 to native brightness */
+static int _ozayn_percent_to_native(int percent, int max_val) {
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    if (max_val <= 0) return 0;
+    return (percent * max_val) / 100;
+}
+
+ozayn_result_t ozayn_brightness_init(void) {
+    if (_ozayn_brightness_initialized) return OZAYN_OK;
+    _ozayn_brightness_path[0] = '\0';
+    _ozayn_brightness_max = 0;
+    _ozayn_brightness_initialized = 1;
+    LOG_INFO("BRIGHT", "Brightness subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_brightness_shutdown(void) {
+    if (!_ozayn_brightness_initialized) return;
+    _ozayn_brightness_path[0] = '\0';
+    _ozayn_brightness_max = 0;
+    _ozayn_brightness_initialized = 0;
+    LOG_INFO("BRIGHT", "Brightness subsystem shut down");
+}
+
+int ozayn_brightness_is_available(void) {
+    if (!_ozayn_brightness_initialized) return 0;
+    return _ozayn_find_backlight();
+}
+
+ozayn_result_t ozayn_brightness_get(int *brightness) {
+    if (!brightness) return OZAYN_ERR_NULL;
+    if (!_ozayn_brightness_initialized) return OZAYN_ERR;
+
+    if (!_ozayn_find_backlight()) return OZAYN_ERR;
+
+    char path[256];
+    snprintf(path, sizeof(path), "%s/brightness", _ozayn_brightness_path);
+
+    FILE *f = fopen(path, "r");
+    if (!f) return OZAYN_ERR;
+
+    int native_val;
+    if (fscanf(f, "%d", &native_val) != 1) {
+        fclose(f);
+        return OZAYN_ERR;
+    }
+    fclose(f);
+
+    *brightness = _ozayn_native_to_percent(native_val, _ozayn_brightness_max);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_brightness_set(int brightness) {
+    if (brightness < 0 || brightness > 100) return OZAYN_ERR;
+    if (!_ozayn_brightness_initialized) return OZAYN_ERR;
+
+    if (!_ozayn_find_backlight()) return OZAYN_ERR;
+
+    char path[256];
+    snprintf(path, sizeof(path), "%s/brightness", _ozayn_brightness_path);
+
+    FILE *f = fopen(path, "w");
+    if (!f) return OZAYN_ERR;
+
+    int native_val = _ozayn_percent_to_native(brightness, _ozayn_brightness_max);
+    if (fprintf(f, "%d", native_val) < 0) {
+        fclose(f);
+        return OZAYN_ERR;
+    }
+    fclose(f);
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_brightness_get_supported(int *supported) {
+    if (!supported) return OZAYN_ERR_NULL;
+    if (!_ozayn_brightness_initialized) return OZAYN_ERR;
+
+    *supported = _ozayn_find_backlight() ? 1 : 0;
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

@@ -66,6 +66,7 @@ extern int run_application_tests(void);
 extern int run_permissions_tests(void);
 extern int run_audio_volume_tests(void);
 extern int run_session_tests(void);
+extern int run_brightness_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -148,6 +149,7 @@ int main(void) {
     suite_fail = run_permissions_tests();   suite_pass = 30 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_audio_volume_tests();  suite_pass = 20 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_session_tests();       suite_pass = 19 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_brightness_tests();    suite_pass = 17 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

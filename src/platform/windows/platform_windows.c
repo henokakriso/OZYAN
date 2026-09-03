@@ -1730,6 +1730,54 @@ ozayn_result_t ozayn_session_lock(void) {
 }
 
 /* ================================================================
+ * V. System Brightness & Display Power Abstraction (Step 22)
+ * ================================================================
+ *
+ * Windows stub — requires WmiMonitorBrightness for full implementation.
+ * Reports unavailable without proper API access.
+ */
+
+static int _ozayn_brightness_initialized = 0;
+
+ozayn_result_t ozayn_brightness_init(void) {
+    if (_ozayn_brightness_initialized) return OZAYN_OK;
+    _ozayn_brightness_initialized = 1;
+    LOG_INFO("BRIGHT", "Brightness subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_brightness_shutdown(void) {
+    if (!_ozayn_brightness_initialized) return;
+    _ozayn_brightness_initialized = 0;
+    LOG_INFO("BRIGHT", "Brightness subsystem shut down");
+}
+
+int ozayn_brightness_is_available(void) {
+    if (!_ozayn_brightness_initialized) return 0;
+    return 0;
+}
+
+ozayn_result_t ozayn_brightness_get(int *brightness) {
+    if (!brightness) return OZAYN_ERR_NULL;
+    if (!_ozayn_brightness_initialized) return OZAYN_ERR;
+    *brightness = 0;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_brightness_set(int brightness) {
+    if (brightness < 0 || brightness > 100) return OZAYN_ERR;
+    if (!_ozayn_brightness_initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_brightness_get_supported(int *supported) {
+    if (!supported) return OZAYN_ERR_NULL;
+    if (!_ozayn_brightness_initialized) return OZAYN_ERR;
+    *supported = 0;
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

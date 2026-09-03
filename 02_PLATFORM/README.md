@@ -1916,6 +1916,70 @@ Tests verify:
 - Lock safety (before init, safe call)
 - Lock does NOT actually lock in automated tests
 
+## Step 22 — System Brightness & Display Power Abstraction
+
+Cross-platform display brightness query and control. Operates on the primary display only. Brightness range: 0–100 (normalized from native range).
+
+### Brightness Lifecycle
+
+```
+ozayn_brightness_init()
+        ↓
+query/control brightness
+        ↓
+ozayn_brightness_shutdown()
+```
+
+### Public API
+
+```c
+/* Brightness Lifecycle */
+ozayn_result_t ozayn_brightness_init(void);
+void           ozayn_brightness_shutdown(void);
+
+/* Brightness Queries */
+int  ozayn_brightness_is_available(void);
+ozayn_result_t ozayn_brightness_get(int *brightness);
+ozayn_result_t ozayn_brightness_get_supported(int *supported);
+
+/* Brightness Control */
+ozayn_result_t ozayn_brightness_set(int brightness);
+```
+
+### Brightness Range
+
+- Minimum: 0 (minimum supported brightness)
+- Maximum: 100 (maximum supported brightness)
+- Invalid values (-1, 101, INT_MIN, INT_MAX) rejected safely
+
+### Safety
+
+- Primary display only — no multi-monitor, no color profiles
+- No resolution changes, no refresh rate changes
+- No display power control, no screen capture
+- Tests restore original brightness after testing
+- Systems without controllable brightness report unavailable
+
+### Platform Implementations
+
+- Linux: `/sys/class/backlight/` interface (kernel backlight)
+- macOS: Stub (requires CoreDisplay framework)
+- Windows: Stub (requires WmiMonitorBrightness)
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Supported query (null, before init, value)
+- Brightness query (null, before init, valid range)
+- Brightness set (negative, over 101, before init, set+restore)
+- Original brightness restoration
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1939,4 +2003,5 @@ Tests verify:
 - [x] Step 19: System Permissions & Capability Access Abstraction
 - [x] Step 20: System Audio Volume & Mute Abstraction
 - [x] Step 21: System Lock State & Session Control Abstraction
-- [ ] Steps 22-35: (future)
+- [x] Step 22: System Brightness & Display Power Abstraction
+- [ ] Steps 23-35: (future)
