@@ -2051,6 +2051,87 @@ Tests verify:
 - Unknown/Light/Dark name strings
 - Invalid enum value handling
 
+## Step 24 — System Font & Text Rendering Information Abstraction
+
+Cross-platform system font discovery and information. Read-only — no font installation, removal, or modification. Provides font count, family/style info, and default font.
+
+### Font Lifecycle
+
+```
+ozayn_font_init()
+        ↓
+enumerate fonts
+        ↓
+ozayn_font_shutdown()
+```
+
+### Public API
+
+```c
+/* Font Lifecycle */
+ozayn_result_t ozayn_font_init(void);
+void           ozayn_font_shutdown(void);
+
+/* Font Queries */
+int  ozayn_font_is_available(void);
+int  ozayn_font_get_count(void);
+ozayn_result_t ozayn_font_get_info(int index, OzaynFontInfo *info);
+ozayn_result_t ozayn_font_get_default(char *family, size_t family_size);
+```
+
+### Font Information Structure
+
+```c
+typedef struct {
+    int index;
+    char family[256];
+    char style[128];
+    int available;
+} OzaynFontInfo;
+```
+
+### Safety
+
+- Read-only discovery — no font installation or modification
+- No font rendering, no text layout, no GUI
+- NULL parameters handled safely
+- Invalid indexes rejected safely
+- Unicode font names supported
+- Internal caching for performance
+
+### Platform Implementations
+
+- Linux: fontconfig library (`FcFontList`, `FcFontMatch`)
+- macOS: Stub (requires Core Text framework)
+- Windows: Stub (requires GDI font APIs)
+
+### Font Enumeration
+
+- `get_count()` — returns number of discoverable fonts
+- `get_info(index, &info)` — returns family, style, availability
+- Caches font list internally for performance
+- Released during shutdown
+
+### Default Font
+
+- `get_default()` — retrieves system UI font
+- Uses fontconfig `FcFontMatch` on Linux
+- Returns failure if no reliable default available
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Font count (before/after init)
+- Font enumeration (null, before init, negative index, out of range, valid, multiple)
+- Default font (null, zero size, before init, valid)
+- Shutdown safety
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2076,4 +2157,5 @@ Tests verify:
 - [x] Step 21: System Lock State & Session Control Abstraction
 - [x] Step 22: System Brightness & Display Power Abstraction
 - [x] Step 23: System Theme & Appearance Abstraction
-- [ ] Steps 24-35: (future)
+- [x] Step 24: System Font & Text Rendering Information Abstraction
+- [ ] Steps 25-35: (future)

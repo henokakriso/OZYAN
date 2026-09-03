@@ -39,6 +39,7 @@
  *   U. System Lock State & Session Control Abstraction (Step 21)
  *   V. System Brightness & Display Power Abstraction (Step 22)
  *   W. System Theme & Appearance Abstraction (Step 23)
+ *   X. System Font & Text Rendering Information Abstraction (Step 24)
  */
 
 /* ================================================================
@@ -1284,6 +1285,36 @@ void           ozayn_appearance_shutdown(void);
 int             ozayn_appearance_is_available(void);
 OzaynAppearance ozayn_appearance_get(void);
 const char     *ozayn_appearance_name(OzaynAppearance appearance);
+
+/* ================================================================
+ * X. System Font & Text Rendering Information Abstraction (Step 24)
+ * ================================================================
+ *
+ * Cross-platform system font discovery and information.
+ * Read-only — no font installation, removal, or modification.
+ * Provides font count, family/style info, and default font.
+ */
+
+/* ---- Font Information ---- */
+
+typedef struct {
+    int index;
+    char family[256];
+    char style[128];
+    int available;
+} OzaynFontInfo;
+
+/* ---- Font Lifecycle ---- */
+
+ozayn_result_t ozayn_font_init(void);
+void           ozayn_font_shutdown(void);
+
+/* ---- Font Queries ---- */
+
+int  ozayn_font_is_available(void);
+int  ozayn_font_get_count(void);
+ozayn_result_t ozayn_font_get_info(int index, OzaynFontInfo *info);
+ozayn_result_t ozayn_font_get_default(char *family, size_t family_size);
 
 /* ================================================================
  * Platform Lifecycle

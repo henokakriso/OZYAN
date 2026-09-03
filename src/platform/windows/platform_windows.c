@@ -1820,6 +1820,59 @@ const char *ozayn_appearance_name(OzaynAppearance appearance) {
 }
 
 /* ================================================================
+ * X. System Font & Text Rendering Information Abstraction (Step 24)
+ * ================================================================
+ *
+ * Windows stub — requires GDI font APIs for full implementation.
+ * Reports unavailable without proper API access.
+ */
+
+static int _ozayn_font_initialized = 0;
+
+ozayn_result_t ozayn_font_init(void) {
+    if (_ozayn_font_initialized) return OZAYN_OK;
+    _ozayn_font_initialized = 1;
+    LOG_INFO("FONT", "Font subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_font_shutdown(void) {
+    if (!_ozayn_font_initialized) return;
+    _ozayn_font_initialized = 0;
+    LOG_INFO("FONT", "Font subsystem shut down");
+}
+
+int ozayn_font_is_available(void) {
+    if (!_ozayn_font_initialized) return 0;
+    return 0;
+}
+
+int ozayn_font_get_count(void) {
+    if (!_ozayn_font_initialized) return 0;
+    return 0;
+}
+
+ozayn_result_t ozayn_font_get_info(int index, OzaynFontInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_font_initialized) return OZAYN_ERR;
+
+    info->index = -1;
+    info->family[0] = '\0';
+    info->style[0] = '\0';
+    info->available = 0;
+
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_font_get_default(char *family, size_t family_size) {
+    if (!family || family_size == 0) return OZAYN_ERR_NULL;
+    if (!_ozayn_font_initialized) return OZAYN_ERR;
+
+    family[0] = '\0';
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

@@ -3842,6 +3842,155 @@ const char *ozayn_appearance_name(OzaynAppearance appearance) {
 }
 
 /* ================================================================
+ * X. System Font & Text Rendering Information Abstraction (Step 24)
+ * ================================================================
+ *
+ * Cross-platform system font discovery and information.
+ * Uses fontconfig library on Linux for font enumeration.
+ * Read-only — no font installation, removal, or modification.
+ */
+
+#include <fontconfig/fontconfig.h>
+
+static int _ozayn_font_initialized = 0;
+static FcPattern *_ozayn_font_pattern = NULL;
+static FcObjectSet *_ozayn_font_objectset = NULL;
+static FcFontSet *_ozayn_font_set = NULL;
+
+/* Internal helper: load font set if not already cached */
+static int _ozayn_font_ensure_loaded(void) {
+    if (_ozayn_font_set) return 1;
+
+    if (!FcInit()) return 0;
+
+    _ozayn_font_pattern = FcPatternCreate();
+    if (!_ozayn_font_pattern) return 0;
+
+    _ozayn_font_objectset = FcObjectSetBuild(FC_FAMILY, FC_STYLE, NULL);
+    if (!_ozayn_font_objectset) {
+        FcPatternDestroy(_ozayn_font_pattern);
+        _ozayn_font_pattern = NULL;
+        return 0;
+    }
+
+    _ozayn_font_set = FcFontList(NULL, _ozayn_font_pattern, _ozayn_font_objectset);
+    return _ozayn_font_set != NULL;
+}
+
+/* Internal helper: free cached font set */
+static void _ozayn_font_free_cache(void) {
+    if (_ozayn_font_set) {
+        FcFontSetDestroy(_ozayn_font_set);
+        _ozayn_font_set = NULL;
+    }
+    if (_ozayn_font_objectset) {
+        FcObjectSetDestroy(_ozayn_font_objectset);
+        _ozayn_font_objectset = NULL;
+    }
+    if (_ozayn_font_pattern) {
+        FcPatternDestroy(_ozayn_font_pattern);
+        _ozayn_font_pattern = NULL;
+    }
+}
+
+ozayn_result_t ozayn_font_init(void) {
+    if (_ozayn_font_initialized) return OZAYN_OK;
+    _ozayn_font_initialized = 1;
+    LOG_INFO("FONT", "Font subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_font_shutdown(void) {
+    if (!_ozayn_font_initialized) return;
+    _ozayn_font_free_cache();
+    FcFini();
+    _ozayn_font_initialized = 0;
+    LOG_INFO("FONT", "Font subsystem shut down");
+}
+
+int ozayn_font_is_available(void) {
+    if (!_ozayn_font_initialized) return 0;
+    return _ozayn_font_ensure_loaded() ? 1 : 0;
+}
+
+int ozayn_font_get_count(void) {
+    if (!_ozayn_font_initialized) return 0;
+    if (!_ozayn_font_ensure_loaded()) return 0;
+    return _ozayn_font_set->nfont;
+}
+
+ozayn_result_t ozayn_font_get_info(int index, OzaynFontInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_font_initialized) return OZAYN_ERR;
+
+    /* Initialize output safely */
+    info->index = -1;
+    info->family[0] = '\0';
+    info->style[0] = '\0';
+    info->available = 0;
+
+    if (!_ozayn_font_ensure_loaded()) return OZAYN_ERR;
+    if (index < 0 || index >= _ozayn_font_set->nfont) return OZAYN_ERR;
+
+    FcPattern *font = _ozayn_font_set->fonts[index];
+
+    /* Extract family */
+    FcChar8 *family = NULL;
+    if (FcPatternGetString(font, FC_FAMILY, 0, &family) == FcResultMatch && family) {
+        size_t len = strlen((const char *)family);
+        if (len >= sizeof(info->family)) len = sizeof(info->family) - 1;
+        memcpy(info->family, family, len);
+        info->family[len] = '\0';
+    }
+
+    /* Extract style */
+    FcChar8 *style = NULL;
+    if (FcPatternGetString(font, FC_STYLE, 0, &style) == FcResultMatch && style) {
+        size_t len = strlen((const char *)style);
+        if (len >= sizeof(info->style)) len = sizeof(info->style) - 1;
+        memcpy(info->style, style, len);
+        info->style[len] = '\0';
+    }
+
+    info->index = index;
+    info->available = 1;
+
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_font_get_default(char *family, size_t family_size) {
+    if (!family || family_size == 0) return OZAYN_ERR_NULL;
+    if (!_ozayn_font_initialized) return OZAYN_ERR;
+
+    family[0] = '\0';
+
+    /* Try to get default font from fontconfig */
+    FcPattern *default_pattern = FcPatternCreate();
+    if (!default_pattern) return OZAYN_ERR;
+
+    FcConfigSubstitute(NULL, default_pattern, FcMatchPattern);
+    FcDefaultSubstitute(default_pattern);
+
+    FcResult result;
+    FcPattern *match = FcFontMatch(NULL, default_pattern, &result);
+    FcPatternDestroy(default_pattern);
+
+    if (!match) return OZAYN_ERR;
+
+    FcChar8 *family_str = NULL;
+    if (FcPatternGetString(match, FC_FAMILY, 0, &family_str) == FcResultMatch && family_str) {
+        size_t len = strlen((const char *)family_str);
+        if (len >= family_size) len = family_size - 1;
+        memcpy(family, family_str, len);
+        family[len] = '\0';
+    }
+
+    FcPatternDestroy(match);
+
+    return (family[0] != '\0') ? OZAYN_OK : OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *
