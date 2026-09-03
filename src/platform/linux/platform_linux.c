@@ -4230,6 +4230,198 @@ const char *ozayn_sensor_type_name(OzaynSensorType type) {
 }
 
 /* ================================================================
+ * Z. System Storage & Disk Information Abstraction (Step 26)
+ * ================================================================
+ *
+ * Cross-platform mounted volume discovery and storage information.
+ * Uses setmntent/getmntent and statvfs on Linux.
+ * Read-only — no formatting, partitioning, mounting, or unmounting.
+ */
+
+#include <sys/statvfs.h>
+#include <mntent.h>
+
+static int _ozayn_storage_initialized = 0;
+#define OZAYN_MAX_STORAGE_VOLUMES 64
+
+static OzaynStorageInfo _ozayn_storage_volumes[OZAYN_MAX_STORAGE_VOLUMES];
+static int _ozayn_storage_count = 0;
+
+/* Internal helper: check if mount point looks like a real filesystem */
+static int _ozayn_is_real_fs(const char *fstype) {
+    if (!fstype || !fstype[0]) return 0;
+    /* Skip pseudo-filesystems */
+    if (strstr(fstype, "proc")) return 0;
+    if (strstr(fstype, "sysfs")) return 0;
+    if (strstr(fstype, "devfs")) return 0;
+    if (strstr(fstype, "tmpfs") && strstr(fstype, "dev")) return 0;
+    if (strcmp(fstype, "devtmpfs") == 0) return 0;
+    if (strcmp(fstype, "cgroup") == 0) return 0;
+    if (strcmp(fstype, "cgroup2") == 0) return 0;
+    if (strcmp(fstype, "overlay") == 0) return 0;
+    if (strcmp(fstype, "squashfs") == 0) return 0;
+    if (strcmp(fstype, "fuse.snapfuse") == 0) return 0;
+    if (strstr(fstype, "nsfs")) return 0;
+    if (strstr(fstype, "pstore")) return 0;
+    if (strstr(fstype, "securityfs")) return 0;
+    if (strstr(fstype, "debugfs")) return 0;
+    if (strstr(fstype, "tracefs")) return 0;
+    if (strstr(fstype, "hugetlbfs")) return 0;
+    if (strstr(fstype, "mqueue")) return 0;
+    if (strstr(fstype, "bpf")) return 0;
+    if (strstr(fstype, "fusectl")) return 0;
+    if (strstr(fstype, "configfs")) return 0;
+    if (strstr(fstype, "autofs")) return 0;
+    if (strstr(fstype, "rpc")) return 0;
+    if (strstr(fstype, "nfsd")) return 0;
+    return 1;
+}
+
+/* Internal helper: scan mounted filesystems */
+static void _ozayn_scan_storage(void) {
+    _ozayn_storage_count = 0;
+    memset(_ozayn_storage_volumes, 0, sizeof(_ozayn_storage_volumes));
+
+    FILE *mtab = setmntent("/proc/mounts", "r");
+    if (!mtab) {
+        /* Try /etc/mtab as fallback */
+        mtab = setmntent("/etc/mtab", "r");
+    }
+    if (!mtab) return;
+
+    struct mntent *mnt;
+    while ((mnt = getmntent(mtab)) != NULL) {
+        if (_ozayn_storage_count >= OZAYN_MAX_STORAGE_VOLUMES) break;
+
+        /* Skip pseudo and non-real filesystems */
+        if (!_ozayn_is_real_fs(mnt->mnt_type)) continue;
+
+        /* Skip duplicate mount points (keep last mount) */
+        int dup = 0;
+        for (int i = 0; i < _ozayn_storage_count; i++) {
+            if (strcmp(_ozayn_storage_volumes[i].mount_point, mnt->mnt_dir) == 0) {
+                /* Update existing entry */
+                dup = 1;
+                strncpy(_ozayn_storage_volumes[i].filesystem, mnt->mnt_type,
+                        sizeof(_ozayn_storage_volumes[i].filesystem) - 1);
+                _ozayn_storage_volumes[i].read_only = (hasmntopt(mnt, "ro") != NULL) ? 1 : 0;
+                _ozayn_storage_volumes[i].removable = (strstr(mnt->mnt_fsname, "/dev/sd") != NULL &&
+                                                       strstr(mnt->mnt_fsname, "/dev/sda") == NULL) ? 1 : 0;
+                break;
+            }
+        }
+        if (dup) continue;
+
+        /* Get filesystem stats */
+        struct statvfs vfs;
+        if (statvfs(mnt->mnt_dir, &vfs) != 0) continue;
+
+        /* Skip tiny filesystems (< 1MB) */
+        uint64_t total = (uint64_t)vfs.f_blocks * vfs.f_frsize;
+        if (total < 1048576) continue;
+
+        OzaynStorageInfo *info = &_ozayn_storage_volumes[_ozayn_storage_count];
+        info->index = _ozayn_storage_count;
+        info->available = 1;
+
+        /* ID: use device name */
+        strncpy(info->id, mnt->mnt_fsname, sizeof(info->id) - 1);
+        info->id[sizeof(info->id) - 1] = '\0';
+
+        /* Name: use mount point basename */
+        const char *basename = strrchr(mnt->mnt_dir, '/');
+        if (basename && basename[1]) {
+            strncpy(info->name, basename + 1, sizeof(info->name) - 1);
+        } else {
+            strncpy(info->name, mnt->mnt_dir, sizeof(info->name) - 1);
+        }
+        info->name[sizeof(info->name) - 1] = '\0';
+
+        /* Mount point */
+        strncpy(info->mount_point, mnt->mnt_dir, sizeof(info->mount_point) - 1);
+        info->mount_point[sizeof(info->mount_point) - 1] = '\0';
+
+        /* Filesystem type */
+        strncpy(info->filesystem, mnt->mnt_type, sizeof(info->filesystem) - 1);
+        info->filesystem[sizeof(info->filesystem) - 1] = '\0';
+
+        /* Sizes */
+        info->total_bytes = (uint64_t)vfs.f_blocks * vfs.f_frsize;
+        info->free_bytes = (uint64_t)vfs.f_bfree * vfs.f_frsize;
+        info->available_bytes = (uint64_t)vfs.f_bavail * vfs.f_frsize;
+
+        /* Flags */
+        info->read_only = (hasmntopt(mnt, "ro") != NULL) ? 1 : 0;
+        /* Simple heuristic for removable: device path contains removable indicator */
+        info->removable = 0;
+
+        _ozayn_storage_count++;
+    }
+
+    endmntent(mtab);
+}
+
+ozayn_result_t ozayn_storage_init(void) {
+    if (_ozayn_storage_initialized) return OZAYN_OK;
+    _ozayn_scan_storage();
+    _ozayn_storage_initialized = 1;
+    LOG_INFO("STORAGE", "Storage subsystem initialized (%d volumes)", _ozayn_storage_count);
+    return OZAYN_OK;
+}
+
+void ozayn_storage_shutdown(void) {
+    if (!_ozayn_storage_initialized) return;
+    _ozayn_storage_count = 0;
+    _ozayn_storage_initialized = 0;
+    LOG_INFO("STORAGE", "Storage subsystem shut down");
+}
+
+int ozayn_storage_is_available(void) {
+    if (!_ozayn_storage_initialized) return 0;
+    return _ozayn_storage_count > 0 ? 1 : 0;
+}
+
+int ozayn_storage_get_count(void) {
+    if (!_ozayn_storage_initialized) return 0;
+    return _ozayn_storage_count;
+}
+
+ozayn_result_t ozayn_storage_get_info(int index, OzaynStorageInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_storage_initialized) return OZAYN_ERR;
+
+    /* Initialize output safely */
+    memset(info, 0, sizeof(*info));
+    info->index = -1;
+    info->available = 0;
+
+    if (index < 0) return OZAYN_ERR;
+    if (index >= _ozayn_storage_count) return OZAYN_ERR;
+
+    *info = _ozayn_storage_volumes[index];
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_storage_get_system_volume(OzaynStorageInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_storage_initialized) return OZAYN_ERR;
+
+    /* Find the volume containing / */
+    for (int i = 0; i < _ozayn_storage_count; i++) {
+        if (strcmp(_ozayn_storage_volumes[i].mount_point, "/") == 0) {
+            *info = _ozayn_storage_volumes[i];
+            return OZAYN_OK;
+        }
+    }
+
+    /* Not found — initialize safe output */
+    memset(info, 0, sizeof(*info));
+    info->index = -1;
+    info->available = 0;
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

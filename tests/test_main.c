@@ -70,6 +70,7 @@ extern int run_brightness_tests(void);
 extern int run_appearance_tests(void);
 extern int run_font_tests(void);
 extern int run_sensors_tests(void);
+extern int run_storage_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -156,6 +157,7 @@ int main(void) {
     suite_fail = run_appearance_tests();    suite_pass = 13 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_font_tests();          suite_pass = 19 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_sensors_tests();       suite_pass = 22 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_storage_tests();       suite_pass = 18 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

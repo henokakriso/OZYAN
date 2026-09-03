@@ -2331,6 +2331,49 @@ const char *ozayn_sensor_type_name(OzaynSensorType type) {
 }
 
 /* ================================================================
+ * Z. System Storage & Disk Information Abstraction (Step 26)
+ * ================================================================
+ * Stub: macOS storage abstraction requires CoreFoundation/DiskArbitration.
+ */
+
+static int _ozayn_storage_initialized = 0;
+
+ozayn_result_t ozayn_storage_init(void) {
+    if (_ozayn_storage_initialized) return OZAYN_OK;
+    _ozayn_storage_initialized = 1;
+    return OZAYN_OK;
+}
+
+void ozayn_storage_shutdown(void) {
+    _ozayn_storage_initialized = 0;
+}
+
+int ozayn_storage_is_available(void) {
+    return 0; /* Stub */
+}
+
+int ozayn_storage_get_count(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_storage_get_info(int index, OzaynStorageInfo *info) {
+    (void)index;
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(*info));
+    info->index = -1;
+    info->available = 0;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_storage_get_system_volume(OzaynStorageInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(*info));
+    info->index = -1;
+    info->available = 0;
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 

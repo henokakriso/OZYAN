@@ -41,6 +41,7 @@
  *   W. System Theme & Appearance Abstraction (Step 23)
  *   X. System Font & Text Rendering Information Abstraction (Step 24)
  *   Y. System Hardware Sensors Abstraction (Step 25)
+ *   Z. System Storage & Disk Information Abstraction (Step 26)
  */
 
 /* ================================================================
@@ -1363,6 +1364,47 @@ ozayn_result_t ozayn_sensors_get_info(int index, OzaynSensorInfo *info);
 /* ---- Sensor Type Names ---- */
 
 const char *ozayn_sensor_type_name(OzaynSensorType type);
+
+/* ================================================================
+ * Z. System Storage & Disk Information Abstraction (Step 26)
+ * ================================================================
+ *
+ * Cross-platform mounted volume discovery and storage information.
+ * Read-only — no formatting, partitioning, mounting, or unmounting.
+ * Discovers mounted volumes with capacity and filesystem info.
+ */
+
+/* ---- Storage Information ---- */
+
+#include <stdint.h>
+
+typedef struct {
+    int index;
+    char id[128];
+    char name[256];
+    char mount_point[512];
+    char filesystem[128];
+
+    uint64_t total_bytes;
+    uint64_t free_bytes;
+    uint64_t available_bytes;
+
+    int removable;
+    int read_only;
+    int available;
+} OzaynStorageInfo;
+
+/* ---- Storage Lifecycle ---- */
+
+ozayn_result_t ozayn_storage_init(void);
+void           ozayn_storage_shutdown(void);
+
+/* ---- Storage Queries ---- */
+
+int  ozayn_storage_is_available(void);
+int  ozayn_storage_get_count(void);
+ozayn_result_t ozayn_storage_get_info(int index, OzaynStorageInfo *info);
+ozayn_result_t ozayn_storage_get_system_volume(OzaynStorageInfo *info);
 
 /* ================================================================
  * Platform Lifecycle

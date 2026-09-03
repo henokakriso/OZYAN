@@ -2216,6 +2216,96 @@ Tests verify:
 - Shutdown safety
 - Measurement validation (finite values only)
 
+## Step 26 — System Storage & Disk Information Abstraction
+
+Cross-platform mounted volume discovery and storage information. Read-only — no formatting, partitioning, mounting, or unmounting. Discovers mounted volumes with capacity and filesystem info.
+
+### Public API
+
+```c
+ozayn_result_t ozayn_storage_init(void);
+void           ozayn_storage_shutdown(void);
+int            ozayn_storage_is_available(void);
+int            ozayn_storage_get_count(void);
+ozayn_result_t ozayn_storage_get_info(int index, OzaynStorageInfo *info);
+ozayn_result_t ozayn_storage_get_system_volume(OzaynStorageInfo *info);
+```
+
+### Storage Information Structure
+
+```c
+typedef struct {
+    int index;
+    char id[128];
+    char name[256];
+    char mount_point[512];
+    char filesystem[128];
+    uint64_t total_bytes;
+    uint64_t free_bytes;
+    uint64_t available_bytes;
+    int removable;
+    int read_only;
+    int available;
+} OzaynStorageInfo;
+```
+
+### Storage Size Semantics
+
+```
+total_bytes      → total filesystem capacity
+free_bytes       → free space for all users
+available_bytes  → free space for non-root users
+```
+
+- `available_bytes <= total_bytes`
+- `free_bytes <= total_bytes`
+- No negative values
+- No fabricated zero values for unavailable data
+
+### Safety
+
+- Read-only discovery — no formatting, partitioning, mounting, unmounting
+- NULL parameters handled safely
+- Invalid indexes rejected safely
+- System volume detection for `/` mount point
+- Pseudo-filesystems skipped (proc, sysfs, tmpfs, devtmpfs, etc.)
+- Skips tiny filesystems (< 1MB)
+- Duplicate mount points updated (keeps last)
+
+### Platform Implementations
+
+- Linux: `setmntent`/`getmntent` + `statvfs`
+- macOS: Stub (requires CoreFoundation/DiskArbitration)
+- Windows: Stub (requires GetDiskFreeSpaceEx/FindFirstVolume)
+
+### System Volume
+
+- `get_system_volume()` identifies volume containing `/`
+- Returns failure if system volume cannot be identified
+- No hardcoded drive letters or paths
+
+### Storage Enumeration
+
+- `get_count()` — returns number of accessible mounted volumes
+- `get_info(index, &info)` — returns full storage info
+- Filters pseudo and non-real filesystems
+- Scans `/proc/mounts` or `/etc/mtab`
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Volume count (before/after init)
+- Enumeration (null, before init, negative index, out of range, valid, multiple)
+- System volume (null, before init, valid)
+- Shutdown safety
+- Capacity validation (available <= total)
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2243,4 +2333,5 @@ Tests verify:
 - [x] Step 23: System Theme & Appearance Abstraction
 - [x] Step 24: System Font & Text Rendering Information Abstraction
 - [x] Step 25: System Hardware Sensors Abstraction
-- [ ] Steps 26-35: (future)
+- [x] Step 26: System Storage & Disk Information Abstraction
+- [ ] Steps 27-35: (future)
