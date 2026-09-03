@@ -1794,6 +1794,60 @@ ozayn_result_t ozayn_audio_volume_toggle_mute(void) {
 }
 
 /* ================================================================
+ * U. System Lock State & Session Control Abstraction (Step 21)
+ * ================================================================
+ *
+ * macOS stub — requires CoreGraphics for session state detection.
+ * Reports unavailable without proper API access.
+ */
+
+static int _ozayn_session_initialized = 0;
+
+ozayn_result_t ozayn_session_init(void) {
+    if (_ozayn_session_initialized) return OZAYN_OK;
+    _ozayn_session_initialized = 1;
+    LOG_INFO("SESSION", "Session subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_session_shutdown(void) {
+    if (!_ozayn_session_initialized) return;
+    _ozayn_session_initialized = 0;
+    LOG_INFO("SESSION", "Session subsystem shut down");
+}
+
+int ozayn_session_is_available(void) {
+    if (!_ozayn_session_initialized) return 0;
+    return 0;
+}
+
+OzaynSessionState ozayn_session_get_state(void) {
+    if (!_ozayn_session_initialized) return OZAYN_SESSION_UNKNOWN;
+    return OZAYN_SESSION_UNAVAILABLE;
+}
+
+int ozayn_session_is_locked(void) {
+    if (!_ozayn_session_initialized) return 0;
+    return 0;
+}
+
+const char *ozayn_session_state_name(OzaynSessionState state) {
+    switch (state) {
+        case OZAYN_SESSION_UNKNOWN:     return "Unknown";
+        case OZAYN_SESSION_ACTIVE:      return "Active";
+        case OZAYN_SESSION_LOCKED:      return "Locked";
+        case OZAYN_SESSION_INACTIVE:    return "Inactive";
+        case OZAYN_SESSION_UNAVAILABLE: return "Unavailable";
+        default:                        return "Invalid";
+    }
+}
+
+ozayn_result_t ozayn_session_lock(void) {
+    if (!_ozayn_session_initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

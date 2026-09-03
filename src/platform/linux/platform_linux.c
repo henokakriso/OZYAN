@@ -25,6 +25,7 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
+#include <X11/extensions/scrnsaver.h>
 #endif
 
 /* V4L2 headers for camera abstraction */
@@ -3447,6 +3448,123 @@ ozayn_result_t ozayn_audio_volume_toggle_mute(void) {
     if (r != OZAYN_OK) return r;
 
     return ozayn_audio_volume_set_muted(muted ? 0 : 1);
+}
+
+/* ================================================================
+ * U. System Lock State & Session Control Abstraction (Step 21)
+ * ================================================================
+ *
+ * Cross-platform session state detection and lock control.
+ * Uses XScreenSaver extension on Linux for lock detection.
+ * Read-only detection + safe lock action only.
+ */
+
+static int _ozayn_session_initialized = 0;
+
+ozayn_result_t ozayn_session_init(void) {
+    if (_ozayn_session_initialized) return OZAYN_OK;
+    _ozayn_session_initialized = 1;
+    LOG_INFO("SESSION", "Session subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_session_shutdown(void) {
+    if (!_ozayn_session_initialized) return;
+    _ozayn_session_initialized = 0;
+    LOG_INFO("SESSION", "Session subsystem shut down");
+}
+
+int ozayn_session_is_available(void) {
+    if (!_ozayn_session_initialized) return 0;
+#ifdef OZAYN_OS_LINUX
+    const char *display_env = getenv("DISPLAY");
+    if (display_env && *display_env) return 1;
+#endif
+    return 0;
+}
+
+OzaynSessionState ozayn_session_get_state(void) {
+    if (!_ozayn_session_initialized) return OZAYN_SESSION_UNKNOWN;
+
+#ifdef OZAYN_OS_LINUX
+    const char *display_env = getenv("DISPLAY");
+    if (!display_env || !*display_env) return OZAYN_SESSION_UNAVAILABLE;
+
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) return OZAYN_SESSION_UNAVAILABLE;
+
+    int event_base, error_base;
+    if (!XScreenSaverQueryExtension(dpy, &event_base, &error_base)) {
+        XCloseDisplay(dpy);
+        return OZAYN_SESSION_UNAVAILABLE;
+    }
+
+    XScreenSaverInfo *info = XScreenSaverAllocInfo();
+    if (!info) {
+        XCloseDisplay(dpy);
+        return OZAYN_SESSION_UNKNOWN;
+    }
+
+    XScreenSaverQueryInfo(dpy, DefaultRootWindow(dpy), info);
+
+    OzaynSessionState state;
+    if (info->window != None && info->window != 0) {
+        state = OZAYN_SESSION_LOCKED;
+    } else if (info->idle > 300000) {
+        /* More than 5 minutes idle */
+        state = OZAYN_SESSION_INACTIVE;
+    } else {
+        state = OZAYN_SESSION_ACTIVE;
+    }
+
+    XFree(info);
+    XCloseDisplay(dpy);
+    return state;
+#else
+    return OZAYN_SESSION_UNAVAILABLE;
+#endif
+}
+
+int ozayn_session_is_locked(void) {
+    if (!_ozayn_session_initialized) return 0;
+    return ozayn_session_get_state() == OZAYN_SESSION_LOCKED;
+}
+
+const char *ozayn_session_state_name(OzaynSessionState state) {
+    switch (state) {
+        case OZAYN_SESSION_UNKNOWN:     return "Unknown";
+        case OZAYN_SESSION_ACTIVE:      return "Active";
+        case OZAYN_SESSION_LOCKED:      return "Locked";
+        case OZAYN_SESSION_INACTIVE:    return "Inactive";
+        case OZAYN_SESSION_UNAVAILABLE: return "Unavailable";
+        default:                        return "Invalid";
+    }
+}
+
+ozayn_result_t ozayn_session_lock(void) {
+    if (!_ozayn_session_initialized) return OZAYN_ERR;
+
+#ifdef OZAYN_OS_LINUX
+    const char *display_env = getenv("DISPLAY");
+    if (!display_env || !*display_env) return OZAYN_ERR;
+
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) return OZAYN_ERR;
+
+    int event_base, error_base;
+    if (!XScreenSaverQueryExtension(dpy, &event_base, &error_base)) {
+        XCloseDisplay(dpy);
+        return OZAYN_ERR;
+    }
+
+    /* Force screen saver activation (lock) */
+    XForceScreenSaver(dpy, ScreenSaverActive);
+    XSync(dpy, False);
+    XCloseDisplay(dpy);
+    return OZAYN_OK;
+#else
+    return OZAYN_ERR;
+#endif
 }
 
 /* ================================================================

@@ -1846,6 +1846,76 @@ Tests verify:
 - Toggle (before init, toggle+verify, toggle back)
 - Original state restoration
 
+## Step 21 — System Lock State & Session Control Abstraction
+
+Cross-platform session state detection and lock control. Read-only detection + safe lock action only. No shutdown, reboot, logout, or privilege escalation.
+
+### Session Lifecycle
+
+```
+ozayn_session_init()
+        ↓
+query state / lock
+        ↓
+ozayn_session_shutdown()
+```
+
+### Public API
+
+```c
+/* Session Lifecycle */
+ozayn_result_t ozayn_session_init(void);
+void           ozayn_session_shutdown(void);
+
+/* Session Queries */
+int               ozayn_session_is_available(void);
+OzaynSessionState ozayn_session_get_state(void);
+int               ozayn_session_is_locked(void);
+const char       *ozayn_session_state_name(OzaynSessionState state);
+
+/* Session Actions */
+ozayn_result_t ozayn_session_lock(void);
+```
+
+### Session States
+
+```c
+OZAYN_SESSION_UNKNOWN     — Cannot determine
+OZAYN_SESSION_ACTIVE      — Session active
+OZAYN_SESSION_LOCKED      — Session locked
+OZAYN_SESSION_INACTIVE    — Session idle
+OZAYN_SESSION_UNAVAILABLE — No session control
+```
+
+### Safety
+
+- Lock only — no logout, shutdown, reboot, or privilege escalation
+- No automated lock in tests — would lock developer's workstation
+- No persistent session monitoring
+- No background polling
+- NULL parameters handled safely
+
+### Platform Implementations
+
+- Linux: XScreenSaver extension (`XScreenSaverQueryInfo`, `XForceScreenSaver`)
+- macOS: Stub (requires CoreGraphics framework)
+- Windows: `LockWorkStation` API
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- State queries (before/after init)
+- Lock queries (before/after init)
+- State names (all valid + invalid)
+- Lock safety (before init, safe call)
+- Lock does NOT actually lock in automated tests
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1868,4 +1938,5 @@ Tests verify:
 - [x] Step 18: Application Launch & Discovery Abstraction
 - [x] Step 19: System Permissions & Capability Access Abstraction
 - [x] Step 20: System Audio Volume & Mute Abstraction
-- [ ] Steps 21-35: (future)
+- [x] Step 21: System Lock State & Session Control Abstraction
+- [ ] Steps 22-35: (future)

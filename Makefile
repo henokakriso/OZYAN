@@ -9,7 +9,7 @@ UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
     PLATFORM_SRC = src/platform/linux/platform_linux.c src/platform/linux/platform_info_linux.c
     PLATFORM_NAME = linux
-    LDFLAGS += -lX11 -lXtst -lasound
+    LDFLAGS += -lX11 -lXtst -lasound -lXss
 endif
 ifeq ($(UNAME_S),Darwin)
     PLATFORM_SRC = src/platform/macos/platform_macos.c src/platform/macos/platform_info_macos.c

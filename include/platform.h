@@ -36,6 +36,7 @@
  *   R. Application Launch & Discovery Abstraction (Step 18)
  *   S. System Permissions & Capability Access Abstraction (Step 19)
  *   T. System Audio Volume & Mute Abstraction (Step 20)
+ *   U. System Lock State & Session Control Abstraction (Step 21)
  */
 
 /* ================================================================
@@ -1194,6 +1195,41 @@ ozayn_result_t ozayn_audio_volume_set(int volume);
 ozayn_result_t ozayn_audio_volume_is_muted(int *muted);
 ozayn_result_t ozayn_audio_volume_set_muted(int muted);
 ozayn_result_t ozayn_audio_volume_toggle_mute(void);
+
+/* ================================================================
+ * U. System Lock State & Session Control Abstraction (Step 21)
+ * ================================================================
+ *
+ * Cross-platform session state detection and lock control.
+ * Read-only detection + safe lock action only.
+ * No shutdown, reboot, logout, or privilege escalation.
+ */
+
+/* ---- Session State ---- */
+
+typedef enum {
+    OZAYN_SESSION_UNKNOWN = 0,
+    OZAYN_SESSION_ACTIVE,
+    OZAYN_SESSION_LOCKED,
+    OZAYN_SESSION_INACTIVE,
+    OZAYN_SESSION_UNAVAILABLE
+} OzaynSessionState;
+
+/* ---- Session Lifecycle ---- */
+
+ozayn_result_t ozayn_session_init(void);
+void           ozayn_session_shutdown(void);
+
+/* ---- Session Queries ---- */
+
+int               ozayn_session_is_available(void);
+OzaynSessionState ozayn_session_get_state(void);
+int               ozayn_session_is_locked(void);
+const char       *ozayn_session_state_name(OzaynSessionState state);
+
+/* ---- Session Actions ---- */
+
+ozayn_result_t ozayn_session_lock(void);
 
 /* ================================================================
  * Platform Lifecycle
