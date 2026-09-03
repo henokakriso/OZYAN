@@ -35,6 +35,7 @@
  *   Q. System Time & Date Abstraction (Step 17)
  *   R. Application Launch & Discovery Abstraction (Step 18)
  *   S. System Permissions & Capability Access Abstraction (Step 19)
+ *   T. System Audio Volume & Mute Abstraction (Step 20)
  */
 
 /* ================================================================
@@ -1164,6 +1165,35 @@ OzaynPermissionState ozayn_permissions_get_state(OzaynCapability capability);
 
 const char *ozayn_capability_get_name(OzaynCapability capability);
 const char *ozayn_permission_state_name(OzaynPermissionState state);
+
+/* ================================================================
+ * T. System Audio Volume & Mute Abstraction (Step 20)
+ * ================================================================
+ *
+ * Cross-platform system audio output volume and mute state control.
+ * Operates on the default output device only.
+ * Volume range: 0–100. Mute: 0 or 1.
+ */
+
+/* ---- Audio Volume Lifecycle ---- */
+
+ozayn_result_t ozayn_audio_volume_init(void);
+void           ozayn_audio_volume_shutdown(void);
+
+/* ---- Audio Volume Queries ---- */
+
+int  ozayn_audio_volume_is_available(void);
+ozayn_result_t ozayn_audio_volume_get(int *volume);
+
+/* ---- Audio Volume Control ---- */
+
+ozayn_result_t ozayn_audio_volume_set(int volume);
+
+/* ---- Mute Control ---- */
+
+ozayn_result_t ozayn_audio_volume_is_muted(int *muted);
+ozayn_result_t ozayn_audio_volume_set_muted(int muted);
+ozayn_result_t ozayn_audio_volume_toggle_mute(void);
 
 /* ================================================================
  * Platform Lifecycle

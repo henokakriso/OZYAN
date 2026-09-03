@@ -1735,6 +1735,65 @@ const char *ozayn_permission_state_name(OzaynPermissionState state) {
 }
 
 /* ================================================================
+ * T. System Audio Volume & Mute Abstraction (Step 20)
+ * ================================================================
+ *
+ * macOS stub — requires Core Audio for full implementation.
+ * Reports unavailable without proper API access.
+ */
+
+static int _ozayn_audio_volume_initialized = 0;
+
+ozayn_result_t ozayn_audio_volume_init(void) {
+    if (_ozayn_audio_volume_initialized) return OZAYN_OK;
+    _ozayn_audio_volume_initialized = 1;
+    LOG_INFO("VOL", "Audio volume subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_audio_volume_shutdown(void) {
+    if (!_ozayn_audio_volume_initialized) return;
+    _ozayn_audio_volume_initialized = 0;
+    LOG_INFO("VOL", "Audio volume subsystem shut down");
+}
+
+int ozayn_audio_volume_is_available(void) {
+    if (!_ozayn_audio_volume_initialized) return 0;
+    return 0;
+}
+
+ozayn_result_t ozayn_audio_volume_get(int *volume) {
+    if (!volume) return OZAYN_ERR_NULL;
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+    *volume = 0;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_audio_volume_set(int volume) {
+    if (volume < 0 || volume > 100) return OZAYN_ERR;
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_audio_volume_is_muted(int *muted) {
+    if (!muted) return OZAYN_ERR_NULL;
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+    *muted = 0;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_audio_volume_set_muted(int muted) {
+    (void)muted;
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_audio_volume_toggle_mute(void) {
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+    return OZAYN_ERR;
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

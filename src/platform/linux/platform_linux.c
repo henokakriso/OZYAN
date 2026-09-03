@@ -3229,6 +3229,227 @@ const char *ozayn_permission_state_name(OzaynPermissionState state) {
 }
 
 /* ================================================================
+ * T. System Audio Volume & Mute Abstraction (Step 20)
+ * ================================================================
+ *
+ * Cross-platform system audio output volume and mute state control.
+ * Uses ALSA mixer API on Linux for the default output device.
+ * Volume range: 0–100. Mute: 0 or 1.
+ */
+
+static int _ozayn_audio_volume_initialized = 0;
+
+/* Internal helper: open default ALSA mixer for playback */
+static snd_mixer_t *_ozayn_open_default_mixer(void) {
+    snd_mixer_t *mixer;
+    int err = snd_mixer_open(&mixer, 0);
+    if (err < 0 || !mixer) return NULL;
+
+    /* Attach to default card */
+    err = snd_mixer_attach(mixer, "default");
+    if (err < 0) {
+        /* Try "hw:0" as fallback */
+        err = snd_mixer_attach(mixer, "hw:0");
+        if (err < 0) {
+            snd_mixer_close(mixer);
+            return NULL;
+        }
+    }
+
+    err = snd_mixer_selem_register(mixer, NULL, NULL);
+    if (err < 0) {
+        snd_mixer_close(mixer);
+        return NULL;
+    }
+
+    snd_mixer_load(mixer);
+    return mixer;
+}
+
+/* Internal helper: find the first playback element */
+static snd_mixer_elem_t *_ozayn_find_playback_elem(snd_mixer_t *mixer) {
+    snd_mixer_elem_t *elem = snd_mixer_first_elem(mixer);
+    while (elem) {
+        if (snd_mixer_elem_get_type(elem) == SND_MIXER_ELEM_SIMPLE) {
+            snd_mixer_selem_id_t *sid;
+            snd_mixer_selem_id_alloca(&sid);
+            snd_mixer_selem_get_id(elem, sid);
+
+            /* Look for Master, PCM, or Speaker */
+            const char *name = snd_mixer_selem_id_get_name(sid);
+            if (strstr(name, "Master") || strstr(name, "PCM") || strstr(name, "Speaker")) {
+                /* Check if it has playback volume */
+                if (snd_mixer_selem_has_playback_volume(elem)) {
+                    return elem;
+                }
+            }
+        }
+        elem = snd_mixer_elem_next(elem);
+    }
+
+    /* Fallback: find any element with playback volume */
+    elem = snd_mixer_first_elem(mixer);
+    while (elem) {
+        if (snd_mixer_elem_get_type(elem) == SND_MIXER_ELEM_SIMPLE) {
+            if (snd_mixer_selem_has_playback_volume(elem)) {
+                return elem;
+            }
+        }
+        elem = snd_mixer_elem_next(elem);
+    }
+
+    return NULL;
+}
+
+/* Internal helper: convert ALSA volume (long) to 0-100 */
+static int _ozayn_alsa_to_percent(long alsa_vol, long min, long max) {
+    if (max <= min) return 0;
+    int percent = (int)((alsa_vol - min) * 100 / (max - min));
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    return percent;
+}
+
+/* Internal helper: convert 0-100 to ALSA volume (long) */
+static long _ozayn_percent_to_alsa(int percent, long min, long max) {
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    if (max <= min) return min;
+    return min + (long)percent * (max - min) / 100;
+}
+
+ozayn_result_t ozayn_audio_volume_init(void) {
+    if (_ozayn_audio_volume_initialized) return OZAYN_OK;
+    _ozayn_audio_volume_initialized = 1;
+    LOG_INFO("VOL", "Audio volume subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_audio_volume_shutdown(void) {
+    if (!_ozayn_audio_volume_initialized) return;
+    _ozayn_audio_volume_initialized = 0;
+    LOG_INFO("VOL", "Audio volume subsystem shut down");
+}
+
+int ozayn_audio_volume_is_available(void) {
+    if (!_ozayn_audio_volume_initialized) return 0;
+
+    snd_mixer_t *mixer = _ozayn_open_default_mixer();
+    if (!mixer) return 0;
+
+    snd_mixer_elem_t *elem = _ozayn_find_playback_elem(mixer);
+    snd_mixer_close(mixer);
+    return elem != NULL;
+}
+
+ozayn_result_t ozayn_audio_volume_get(int *volume) {
+    if (!volume) return OZAYN_ERR_NULL;
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+
+    snd_mixer_t *mixer = _ozayn_open_default_mixer();
+    if (!mixer) return OZAYN_ERR;
+
+    snd_mixer_elem_t *elem = _ozayn_find_playback_elem(mixer);
+    if (!elem) {
+        snd_mixer_close(mixer);
+        return OZAYN_ERR;
+    }
+
+    long min, max;
+    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+
+    long alsa_vol;
+    int err = snd_mixer_selem_get_playback_volume(elem, SND_MIXER_SCHN_FRONT_LEFT, &alsa_vol);
+    if (err < 0) {
+        snd_mixer_close(mixer);
+        return OZAYN_ERR;
+    }
+
+    *volume = _ozayn_alsa_to_percent(alsa_vol, min, max);
+    snd_mixer_close(mixer);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_volume_set(int volume) {
+    if (volume < 0 || volume > 100) return OZAYN_ERR;
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+
+    snd_mixer_t *mixer = _ozayn_open_default_mixer();
+    if (!mixer) return OZAYN_ERR;
+
+    snd_mixer_elem_t *elem = _ozayn_find_playback_elem(mixer);
+    if (!elem) {
+        snd_mixer_close(mixer);
+        return OZAYN_ERR;
+    }
+
+    long min, max;
+    snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+    long alsa_vol = _ozayn_percent_to_alsa(volume, min, max);
+
+    /* Set both channels */
+    snd_mixer_selem_set_playback_volume_all(elem, alsa_vol);
+
+    snd_mixer_close(mixer);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_volume_is_muted(int *muted) {
+    if (!muted) return OZAYN_ERR_NULL;
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+
+    snd_mixer_t *mixer = _ozayn_open_default_mixer();
+    if (!mixer) return OZAYN_ERR;
+
+    snd_mixer_elem_t *elem = _ozayn_find_playback_elem(mixer);
+    if (!elem) {
+        snd_mixer_close(mixer);
+        return OZAYN_ERR;
+    }
+
+    int sw;
+    int err = snd_mixer_selem_get_playback_switch(elem, SND_MIXER_SCHN_FRONT_LEFT, &sw);
+    if (err < 0) {
+        snd_mixer_close(mixer);
+        return OZAYN_ERR;
+    }
+
+    /* ALSA: switch=0 means muted, switch=1 means unmuted */
+    *muted = sw ? 0 : 1;
+    snd_mixer_close(mixer);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_volume_set_muted(int muted) {
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+
+    snd_mixer_t *mixer = _ozayn_open_default_mixer();
+    if (!mixer) return OZAYN_ERR;
+
+    snd_mixer_elem_t *elem = _ozayn_find_playback_elem(mixer);
+    if (!elem) {
+        snd_mixer_close(mixer);
+        return OZAYN_ERR;
+    }
+
+    /* ALSA: switch=0 means muted, switch=1 means unmuted */
+    snd_mixer_selem_set_playback_switch_all(elem, muted ? 0 : 1);
+
+    snd_mixer_close(mixer);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_audio_volume_toggle_mute(void) {
+    if (!_ozayn_audio_volume_initialized) return OZAYN_ERR;
+
+    int muted;
+    ozayn_result_t r = ozayn_audio_volume_is_muted(&muted);
+    if (r != OZAYN_OK) return r;
+
+    return ozayn_audio_volume_set_muted(muted ? 0 : 1);
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

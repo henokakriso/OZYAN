@@ -1769,6 +1769,83 @@ Tests verify:
 - Capability queries (camera, microphone, notifications, accessibility, filesystem, network)
 - Invalid input handling
 
+## Step 20 — System Audio Volume & Mute Abstraction
+
+Cross-platform system audio output volume and mute state control. Complements Step 11 (raw PCM output) with system-level volume control.
+
+### Audio Volume Lifecycle
+
+```
+ozayn_audio_volume_init()
+        ↓
+query/control volume
+        ↓
+ozayn_audio_volume_shutdown()
+```
+
+### Public API
+
+```c
+/* Audio Volume Lifecycle */
+ozayn_result_t ozayn_audio_volume_init(void);
+void           ozayn_audio_volume_shutdown(void);
+
+/* Audio Volume Queries */
+int  ozayn_audio_volume_is_available(void);
+ozayn_result_t ozayn_audio_volume_get(int *volume);
+
+/* Audio Volume Control */
+ozayn_result_t ozayn_audio_volume_set(int volume);
+
+/* Mute Control */
+ozayn_result_t ozayn_audio_volume_is_muted(int *muted);
+ozayn_result_t ozayn_audio_volume_set_muted(int muted);
+ozayn_result_t ozayn_audio_volume_toggle_mute(void);
+```
+
+### Volume Range
+
+- Minimum: 0 (silence)
+- Maximum: 100 (full volume)
+- Invalid values (-1, 101, INT_MIN, INT_MAX) rejected safely
+
+### Mute State
+
+- `muted = 0` — unmuted
+- `muted = 1` — muted
+- Toggle flips between muted/unmuted
+
+### Safety
+
+- Operates on default output device only
+- No multi-device routing, no per-application volume
+- No microphone control
+- No audio capture
+- No remote control
+- Tests restore original volume/mute state
+- Headless systems report unavailable gracefully
+
+### Platform Implementations
+
+- Linux: ALSA mixer API (Master/PCM/Speaker playback volume)
+- macOS: Stub (requires Core Audio framework)
+- Windows: Stub (requires IAudioEndpointVolume)
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Volume query (null, before init, valid range)
+- Volume set (negative, over 101, before init, set+restore)
+- Mute control (null, before init, mute+verify, unmute+verify)
+- Toggle (before init, toggle+verify, toggle back)
+- Original state restoration
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -1790,4 +1867,5 @@ Tests verify:
 - [x] Step 17: System Time & Date Abstraction
 - [x] Step 18: Application Launch & Discovery Abstraction
 - [x] Step 19: System Permissions & Capability Access Abstraction
-- [ ] Steps 20-35: (future)
+- [x] Step 20: System Audio Volume & Mute Abstraction
+- [ ] Steps 21-35: (future)
