@@ -2669,6 +2669,87 @@ Tests verify:
 - Multiple consecutive queries (stability)
 - Query after shutdown
 
+## Step 31 — Network Configuration & Routing Information Abstraction
+
+Cross-platform read-only network configuration and routing information.
+
+Extends Step 12 with subnet, gateway, and DNS details.
+
+### Supported Information
+
+| Category | Data | Linux Source |
+|----------|------|-------------|
+| Interface | Name, IPv4, IPv6 | `getifaddrs()` |
+| Routing | Default IPv4 gateway | `/proc/net/route` |
+| Routing | Default IPv6 gateway | `/proc/net/ipv6_route` |
+| Subnet | Netmask | `getifaddrs()` netmask |
+| DNS | Primary, secondary | `/etc/resolv.conf` |
+
+### Public API
+
+```c
+ozayn_result_t ozayn_network_config_init(void);
+void           ozayn_network_config_shutdown(void);
+int            ozayn_network_config_is_available(void);
+int            ozayn_network_config_get_count(void);
+ozayn_result_t ozayn_network_config_get(int index, OzaynNetworkConfig *config);
+ozayn_result_t ozayn_network_config_get_default(OzaynNetworkConfig *config);
+```
+
+### Architecture
+
+```
+OZAYN
+  ↓
+Common Network Configuration API
+  ↓
+Linux / Windows / macOS
+  ↓
+Operating System
+```
+
+### Security Model
+
+- Read-only — no network modification, no interface enable/disable
+- No route creation/deletion, no DNS modification
+- No firewall, proxy, or VPN control
+- No packet capture, no port scanning
+- No credential or password access
+- No network information persistence or transmission
+
+### Platform Availability
+
+| Platform | Status |
+|----------|--------|
+| Linux | Fully implemented |
+| macOS | Stub (requires `getifaddrs` + routing APIs) |
+| Windows | Stub (requires `GetAdaptersAddresses` / `GetIpForwardTable`) |
+
+### Limitations
+
+- Unknown values remain explicitly unknown (no fake addresses)
+- DNS read from `/etc/resolv.conf` (may not reflect systemd-resolved)
+- No default route is a valid environmental condition
+- Loopback interfaces excluded from enumeration
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Count queries (before/after init)
+- Valid index retrieval and enumeration
+- Invalid input handling (NULL, negative, out-of-range)
+- IPv4 format validation (3 dots, non-empty)
+- IPv6 format validation (2+ colons, non-empty)
+- Null-termination of all string buffers
+- Default configuration retrieval
+- Query after shutdown
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2701,4 +2782,5 @@ Tests verify:
 - [x] Step 28: Bluetooth & Wireless Peripheral Discovery Abstraction
 - [x] Step 29: System Event & Hardware Change Notification Abstraction
 - [x] Step 30: System Resource Monitoring Abstraction
-- [ ] Steps 31-35: (future)
+- [x] Step 31: Network Configuration & Routing Information Abstraction
+- [ ] Steps 32-35: (future)

@@ -2467,6 +2467,46 @@ ozayn_result_t ozayn_resources_get_info(OzaynResourceInfo *info) {
 }
 
 /* ================================================================
+ * AE. Network Configuration & Routing Information Abstraction (Step 31)
+ * ================================================================
+ * Stub: Windows network config requires GetAdaptersAddresses / GetIpForwardTable.
+ */
+
+static int _ozayn_netcfg_initialized = 0;
+
+ozayn_result_t ozayn_network_config_init(void) {
+    if (_ozayn_netcfg_initialized) return OZAYN_OK;
+    _ozayn_netcfg_initialized = 1;
+    return OZAYN_OK;
+}
+
+void ozayn_network_config_shutdown(void) {
+    _ozayn_netcfg_initialized = 0;
+}
+
+int ozayn_network_config_is_available(void) {
+    return 0; /* Stub */
+}
+
+int ozayn_network_config_get_count(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_network_config_get(int index, OzaynNetworkConfig *config) {
+    if (!config) return OZAYN_ERR_NULL;
+    memset(config, 0, sizeof(OzaynNetworkConfig));
+    if (!_ozayn_netcfg_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+ozayn_result_t ozayn_network_config_get_default(OzaynNetworkConfig *config) {
+    if (!config) return OZAYN_ERR_NULL;
+    memset(config, 0, sizeof(OzaynNetworkConfig));
+    if (!_ozayn_netcfg_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 

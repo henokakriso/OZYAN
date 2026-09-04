@@ -46,6 +46,7 @@
  *   AB. Bluetooth & Wireless Peripheral Discovery Abstraction (Step 28)
  *   AC. System Event & Hardware Change Notification Abstraction (Step 29)
  *   AD. System Resource Monitoring Abstraction (Step 30)
+ *   AE. Network Configuration & Routing Information Abstraction (Step 31)
  */
 
 /* ================================================================
@@ -1638,6 +1639,59 @@ ozayn_result_t ozayn_resources_get_cpu_usage(double *usage_percent);
 ozayn_result_t ozayn_resources_get_memory_usage(uint64_t *total_bytes, uint64_t *used_bytes, uint64_t *available_bytes);
 ozayn_result_t ozayn_resources_get_process_count(size_t *count);
 ozayn_result_t ozayn_resources_get_load_average(double *load_1m, double *load_5m, double *load_15m);
+
+/* ================================================================
+ * AE. Network Configuration & Routing Information Abstraction (Step 31)
+ * ================================================================
+ *
+ * Cross-platform read-only network configuration and routing information.
+ * Extends Step 12 with subnet, gateway, and DNS details.
+ * No network modification, no packet capture, no credential access.
+ */
+
+#define OZAYN_MAX_NETCFG_IFACE  128
+#define OZAYN_MAX_NETCFG_ADDR   64
+#define OZAYN_MAX_NETCFG_V6    128
+#define OZAYN_MAX_NETCFG_DNS   128
+#define OZAYN_MAX_NETCFG_IFACES 16
+
+/* ---- Network Configuration ---- */
+
+typedef struct {
+    int index;
+
+    char interface_name[OZAYN_MAX_NETCFG_IFACE];
+
+    char ipv4_address[OZAYN_MAX_NETCFG_ADDR];
+    char ipv6_address[OZAYN_MAX_NETCFG_V6];
+
+    char subnet_mask[OZAYN_MAX_NETCFG_ADDR];
+
+    char gateway_ipv4[OZAYN_MAX_NETCFG_ADDR];
+    char gateway_ipv6[OZAYN_MAX_NETCFG_V6];
+
+    char dns_primary[OZAYN_MAX_NETCFG_DNS];
+    char dns_secondary[OZAYN_MAX_NETCFG_DNS];
+
+    int has_ipv4;
+    int has_ipv6;
+    int has_gateway;
+    int has_dns;
+
+    int available;
+} OzaynNetworkConfig;
+
+/* ---- Network Configuration Lifecycle ---- */
+
+ozayn_result_t ozayn_network_config_init(void);
+void           ozayn_network_config_shutdown(void);
+
+/* ---- Network Configuration Queries ---- */
+
+int  ozayn_network_config_is_available(void);
+int  ozayn_network_config_get_count(void);
+ozayn_result_t ozayn_network_config_get(int index, OzaynNetworkConfig *config);
+ozayn_result_t ozayn_network_config_get_default(OzaynNetworkConfig *config);
 
 /* ================================================================
  * Platform Lifecycle

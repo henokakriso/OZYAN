@@ -5952,6 +5952,339 @@ ozayn_result_t ozayn_resources_get_info(OzaynResourceInfo *info) {
 }
 
 /* ================================================================
+ * AE. Network Configuration & Routing Information Abstraction (Step 31)
+ * ================================================================
+ *
+ * Cross-platform read-only network configuration and routing information.
+ * Linux implementation using getifaddrs, /proc/net/route, and /etc/resolv.conf.
+ * Extends Step 12 with subnet, gateway, and DNS details.
+ */
+
+static int _ozayn_netcfg_initialized = 0;
+static OzaynNetworkConfig _ozayn_netcfg_configs[OZAYN_MAX_NETCFG_IFACES];
+static int _ozayn_netcfg_count = 0;
+static int _ozayn_netcfg_default_index = -1;
+
+/* Internal helper: convert netmask to dotted notation */
+static void _ozayn_netmask_to_string(uint32_t mask, char *buf, size_t bufsz) {
+    if (!buf || bufsz < 18) return;
+    snprintf(buf, bufsz, "%u.%u.%u.%u",
+             mask & 0xFF, (mask >> 8) & 0xFF,
+             (mask >> 16) & 0xFF, (mask >> 24) & 0xFF);
+}
+
+/* Internal helper: read /proc/net/route for gateway of default route */
+static void _ozayn_read_gateway(char *gateway_buf, size_t bufsz) {
+    if (!gateway_buf || bufsz < 1) return;
+    gateway_buf[0] = '\0';
+
+    FILE *f = fopen("/proc/net/route", "r");
+    if (!f) return;
+
+    char line[512];
+    /* Skip header */
+    if (fgets(line, sizeof(line), f) == NULL) { fclose(f); return; }
+    if (fgets(line, sizeof(line), f) == NULL) { fclose(f); return; }
+
+    /* Format: Iface Destination Gateway Flags ... */
+    while (fgets(line, sizeof(line), f)) {
+        char iface[64] = {0};
+        unsigned long dest = 0;
+        unsigned long gw = 0;
+
+        if (sscanf(line, "%63s %lx %lx", iface, &dest, &gw) == 3) {
+            if (dest == 0 && gw != 0) {
+                /* Default route: gateway in host byte order */
+                struct in_addr addr;
+                addr.s_addr = htonl(gw);
+                inet_ntop(AF_INET, &addr, gateway_buf, bufsz);
+                fclose(f);
+                return;
+            }
+        }
+    }
+
+    fclose(f);
+}
+
+/* Internal helper: read /proc/net/route for subnet mask of an interface */
+static void _ozayn_read_subnet(const char *iface_name, char *mask_buf, size_t bufsz) {
+    if (!iface_name || !mask_buf || bufsz < 1) return;
+    mask_buf[0] = '\0';
+
+    FILE *f = fopen("/proc/net/route", "r");
+    if (!f) return;
+
+    char line[512];
+    if (fgets(line, sizeof(line), f) == NULL) { fclose(f); return; }
+    if (fgets(line, sizeof(line), f) == NULL) { fclose(f); return; }
+
+    while (fgets(line, sizeof(line), f)) {
+        char iface[64] = {0};
+        unsigned long dest = 0;
+        unsigned long gw = 0;
+        unsigned int flags = 0;
+        unsigned long mask = 0;
+
+        if (sscanf(line, "%63s %lx %lx %x %lx", iface, &dest, &gw, &flags, &mask) >= 4) {
+            if (strcmp(iface, iface_name) == 0 && dest != 0) {
+                struct in_addr addr;
+                addr.s_addr = htonl(mask);
+                inet_ntop(AF_INET, &addr, mask_buf, bufsz);
+                fclose(f);
+                return;
+            }
+        }
+    }
+
+    fclose(f);
+}
+
+/* Internal helper: read DNS from /etc/resolv.conf */
+static void _ozayn_read_dns(char *primary, size_t primary_sz, char *secondary, size_t secondary_sz) {
+    if (primary && primary_sz > 0) primary[0] = '\0';
+    if (secondary && secondary_sz > 0) secondary[0] = '\0';
+
+    FILE *f = fopen("/etc/resolv.conf", "r");
+    if (!f) return;
+
+    char line[512];
+    int found = 0;
+
+    while (fgets(line, sizeof(line), f)) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+
+        if (strncmp(p, "nameserver", 10) != 0) continue;
+
+        p += 10;
+        while (*p == ' ' || *p == '\t') p++;
+
+        /* Trim trailing whitespace */
+        char *end = p + strlen(p) - 1;
+        while (end > p && (*end == '\n' || *end == '\r' || *end == ' ')) *end-- = '\0';
+
+        if (p[0] == '\0') continue;
+
+        if (found == 0 && primary && primary_sz > 0) {
+            strncpy(primary, p, primary_sz - 1);
+            found++;
+        } else if (found == 1 && secondary && secondary_sz > 0) {
+            strncpy(secondary, p, secondary_sz - 1);
+            found++;
+            break;
+        }
+    }
+
+    fclose(f);
+}
+
+/* Internal helper: read IPv6 gateway from /proc/net/ipv6_route */
+static void _ozayn_read_gateway_v6(const char *iface_name, char *gw_buf, size_t bufsz) {
+    if (!gw_buf || bufsz < 1) return;
+    gw_buf[0] = '\0';
+
+    FILE *f = fopen("/proc/net/ipv6_route", "r");
+    if (!f) return;
+
+    char line[1024];
+    while (fgets(line, sizeof(line), f)) {
+        /* Format: destination source metric flags iface ... */
+        char dest[64] = {0}, src[64] = {0};
+        char iface[64] = {0};
+        unsigned int metric = 0, flags = 0;
+
+        if (sscanf(line, "%63s %63s %x %x %63s", dest, src, &metric, &flags, iface) >= 5) {
+            /* Default route: destination is all zeros */
+            int is_default = 1;
+            for (const char *d = dest; *d; d++) {
+                if (*d != '0') { is_default = 0; break; }
+            }
+            if (is_default && iface_name && strcmp(iface, iface_name) == 0) {
+                /* Gateway is in the source field for default routes */
+                if (src[0] != '0') {
+                    /* Convert hex to IPv6 */
+                    char v6[128] = {0};
+                    /* Parse 8 groups of 4 hex digits */
+                    if (strlen(src) == 32) {
+                        char buf[128] = {0};
+                        int pos = 0;
+                        for (int i = 0; i < 8 && pos < 120; i++) {
+                            if (i > 0) buf[pos++] = ':';
+                            for (int j = 0; j < 4 && pos < 120; j++) {
+                                buf[pos++] = src[i * 4 + j];
+                            }
+                        }
+                        /* Try to convert */
+                        struct in6_addr addr6;
+                        if (inet_pton(AF_INET6, buf, &addr6) == 1) {
+                            inet_ntop(AF_INET6, &addr6, gw_buf, bufsz);
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    fclose(f);
+}
+
+/* Internal helper: enumerate network configuration */
+static void _ozayn_netcfg_enumerate(void) {
+    _ozayn_netcfg_count = 0;
+    _ozayn_netcfg_default_index = -1;
+
+    struct ifaddrs *ifaddr, *ifa;
+    if (getifaddrs(&ifaddr) == -1) return;
+
+    for (ifa = ifaddr; ifa != NULL && _ozayn_netcfg_count < OZAYN_MAX_NETCFG_IFACES; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) continue;
+        if (ifa->ifa_flags & IFF_LOOPBACK) continue;
+
+        int family = ifa->ifa_addr->sa_family;
+        if (family != AF_INET && family != AF_INET6) continue;
+
+        /* Check if we already have this interface name */
+        int existing = -1;
+        for (int i = 0; i < _ozayn_netcfg_count; i++) {
+            if (strcmp(_ozayn_netcfg_configs[i].interface_name, ifa->ifa_name) == 0) {
+                existing = i;
+                break;
+            }
+        }
+
+        if (existing < 0) {
+            if (_ozayn_netcfg_count >= OZAYN_MAX_NETCFG_IFACES) break;
+            existing = _ozayn_netcfg_count;
+            memset(&_ozayn_netcfg_configs[existing], 0, sizeof(OzaynNetworkConfig));
+            _ozayn_netcfg_configs[existing].index = existing;
+            strncpy(_ozayn_netcfg_configs[existing].interface_name, ifa->ifa_name,
+                    OZAYN_MAX_NETCFG_IFACE - 1);
+            _ozayn_netcfg_configs[existing].available = 1;
+            _ozayn_netcfg_count++;
+        }
+
+        OzaynNetworkConfig *cfg = &_ozayn_netcfg_configs[existing];
+
+        /* IPv4 */
+        if (family == AF_INET) {
+            struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+            inet_ntop(AF_INET, &sa->sin_addr, cfg->ipv4_address, OZAYN_MAX_NETCFG_ADDR);
+            cfg->has_ipv4 = 1;
+
+            /* Subnet mask */
+            if (ifa->ifa_netmask && ifa->ifa_netmask->sa_family == AF_INET) {
+                struct sockaddr_in *nm = (struct sockaddr_in *)ifa->ifa_netmask;
+                _ozayn_netmask_to_string(ntohl(nm->sin_addr.s_addr),
+                                          cfg->subnet_mask, OZAYN_MAX_NETCFG_ADDR);
+            }
+        }
+        /* IPv6 */
+        else if (family == AF_INET6) {
+            struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)ifa->ifa_addr;
+            /* Skip link-local */
+            if (IN6_IS_ADDR_LINKLOCAL(&sa6->sin6_addr)) continue;
+            inet_ntop(AF_INET6, &sa6->sin6_addr, cfg->ipv6_address, OZAYN_MAX_NETCFG_V6);
+            cfg->has_ipv6 = 1;
+        }
+    }
+
+    freeifaddrs(ifaddr);
+
+    /* Read gateway and DNS from /proc/net/route and /etc/resolv.conf */
+    char primary_dns[128] = {0}, secondary_dns[128] = {0};
+    _ozayn_read_dns(primary_dns, sizeof(primary_dns), secondary_dns, sizeof(secondary_dns));
+
+    for (int i = 0; i < _ozayn_netcfg_count; i++) {
+        OzaynNetworkConfig *cfg = &_ozayn_netcfg_configs[i];
+
+        /* IPv4 gateway */
+        char gw[64] = {0};
+        _ozayn_read_gateway(gw, sizeof(gw));
+        if (gw[0]) {
+            strncpy(cfg->gateway_ipv4, gw, OZAYN_MAX_NETCFG_ADDR - 1);
+            cfg->has_gateway = 1;
+        }
+
+        /* IPv6 gateway */
+        char gw6[128] = {0};
+        _ozayn_read_gateway_v6(cfg->interface_name, gw6, sizeof(gw6));
+        if (gw6[0]) {
+            strncpy(cfg->gateway_ipv6, gw6, OZAYN_MAX_NETCFG_V6 - 1);
+            cfg->has_gateway = 1;
+        }
+
+        /* DNS (same for all interfaces on Linux) */
+        if (primary_dns[0]) {
+            strncpy(cfg->dns_primary, primary_dns, OZAYN_MAX_NETCFG_DNS - 1);
+            cfg->has_dns = 1;
+        }
+        if (secondary_dns[0]) {
+            strncpy(cfg->dns_secondary, secondary_dns, OZAYN_MAX_NETCFG_DNS - 1);
+            cfg->has_dns = 1;
+        }
+    }
+
+    /* Determine default interface: first non-loopback with IPv4 UP */
+    if (_ozayn_netcfg_default_index < 0 && _ozayn_netcfg_count > 0) {
+        _ozayn_netcfg_default_index = 0;
+    }
+}
+
+ozayn_result_t ozayn_network_config_init(void) {
+    if (_ozayn_netcfg_initialized) return OZAYN_OK;
+
+    memset(_ozayn_netcfg_configs, 0, sizeof(_ozayn_netcfg_configs));
+    _ozayn_netcfg_count = 0;
+    _ozayn_netcfg_default_index = -1;
+
+    _ozayn_netcfg_enumerate();
+    _ozayn_netcfg_initialized = 1;
+
+    LOG_INFO("NETCFG", "Network config initialized (interfaces=%d)", _ozayn_netcfg_count);
+    return OZAYN_OK;
+}
+
+void ozayn_network_config_shutdown(void) {
+    _ozayn_netcfg_initialized = 0;
+    _ozayn_netcfg_count = 0;
+    _ozayn_netcfg_default_index = -1;
+}
+
+int ozayn_network_config_is_available(void) {
+    return _ozayn_netcfg_initialized && _ozayn_netcfg_count > 0;
+}
+
+int ozayn_network_config_get_count(void) {
+    if (!_ozayn_netcfg_initialized) return 0;
+    return _ozayn_netcfg_count;
+}
+
+ozayn_result_t ozayn_network_config_get(int index, OzaynNetworkConfig *config) {
+    if (!config) return OZAYN_ERR_NULL;
+    memset(config, 0, sizeof(OzaynNetworkConfig));
+
+    if (!_ozayn_netcfg_initialized) return OZAYN_ERR;
+    if (index < 0 || index >= _ozayn_netcfg_count) return OZAYN_ERR;
+
+    memcpy(config, &_ozayn_netcfg_configs[index], sizeof(OzaynNetworkConfig));
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_network_config_get_default(OzaynNetworkConfig *config) {
+    if (!config) return OZAYN_ERR_NULL;
+    memset(config, 0, sizeof(OzaynNetworkConfig));
+
+    if (!_ozayn_netcfg_initialized) return OZAYN_ERR;
+    if (_ozayn_netcfg_default_index < 0) return OZAYN_ERR;
+    if (_ozayn_netcfg_default_index >= _ozayn_netcfg_count) return OZAYN_ERR;
+
+    memcpy(config, &_ozayn_netcfg_configs[_ozayn_netcfg_default_index], sizeof(OzaynNetworkConfig));
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * Platform Detection & Initialization
  * ================================================================ */
 
