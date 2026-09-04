@@ -2428,6 +2428,68 @@ const char *ozayn_peripheral_type_name(OzaynPeripheralType type) {
 }
 
 /* ================================================================
+ * AB. Bluetooth & Wireless Peripheral Discovery Abstraction (Step 28)
+ * ================================================================
+ * Stub: macOS Bluetooth requires IOBluetooth framework.
+ */
+
+static int _ozayn_bluetooth_initialized = 0;
+static int _ozayn_bluetooth_discovering = 0;
+
+ozayn_result_t ozayn_bluetooth_init(void) {
+    if (_ozayn_bluetooth_initialized) return OZAYN_OK;
+    _ozayn_bluetooth_initialized = 1;
+    _ozayn_bluetooth_discovering = 0;
+    return OZAYN_OK;
+}
+
+void ozayn_bluetooth_shutdown(void) {
+    _ozayn_bluetooth_discovering = 0;
+    _ozayn_bluetooth_initialized = 0;
+}
+
+int ozayn_bluetooth_is_available(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_bluetooth_start_discovery(void) {
+    if (!_ozayn_bluetooth_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+ozayn_result_t ozayn_bluetooth_stop_discovery(void) {
+    _ozayn_bluetooth_discovering = 0;
+    return OZAYN_OK;
+}
+
+int ozayn_bluetooth_is_discovering(void) {
+    return _ozayn_bluetooth_discovering;
+}
+
+size_t ozayn_bluetooth_get_device_count(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_bluetooth_get_device_info(size_t index, OzaynBluetoothDeviceInfo *info) {
+    (void)index;
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(*info));
+    info->index = 0;
+    info->type = OZAYN_BLUETOOTH_UNKNOWN;
+    info->available = 0;
+    return OZAYN_ERR;
+}
+
+const char *ozayn_bluetooth_type_name(OzaynBluetoothType type) {
+    switch (type) {
+        case OZAYN_BLUETOOTH_UNKNOWN:    return "Unknown";
+        case OZAYN_BLUETOOTH_CLASSIC:    return "Classic";
+        case OZAYN_BLUETOOTH_LOW_ENERGY: return "Low Energy";
+        default:                         return "Unknown";
+    }
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 

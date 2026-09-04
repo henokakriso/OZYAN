@@ -2390,6 +2390,101 @@ Tests verify:
 - Type names (all types + invalid enum)
 - Shutdown safety
 
+## Step 28 — Bluetooth & Wireless Peripheral Discovery Abstraction
+
+Cross-platform Bluetooth device discovery and basic information. Read-only — no pairing, connection, data transfer, or device control. Discovers nearby Bluetooth devices with type, name, and signal info.
+
+### Bluetooth Types
+
+```
+UNKNOWN, CLASSIC, LOW_ENERGY
+```
+
+### Public API
+
+```c
+ozayn_result_t ozayn_bluetooth_init(void);
+void           ozayn_bluetooth_shutdown(void);
+int            ozayn_bluetooth_is_available(void);
+ozayn_result_t ozayn_bluetooth_start_discovery(void);
+ozayn_result_t ozayn_bluetooth_stop_discovery(void);
+int            ozayn_bluetooth_is_discovering(void);
+size_t         ozayn_bluetooth_get_device_count(void);
+ozayn_result_t ozayn_bluetooth_get_device_info(size_t index, OzaynBluetoothDeviceInfo *info);
+const char    *ozayn_bluetooth_type_name(OzaynBluetoothType type);
+```
+
+### Device Information Structure
+
+```c
+typedef struct {
+    size_t index;
+    OzaynBluetoothType type;
+    char id[256];
+    char name[256];
+    char address[64];
+    char description[512];
+    int signal_strength;
+    int signal_strength_available;
+    int paired;
+    int connected;
+    int available;
+} OzaynBluetoothDeviceInfo;
+```
+
+### Safety
+
+- Read-only discovery — no pairing, connection, or data transfer
+- Explicit start/stop discovery lifecycle
+- No permanent background scanning
+- NULL parameters handled safely
+- Large index values rejected safely
+- Signal strength only when available (not fabricated as 0)
+- No persistent device tracking
+- No surveillance or tracking use
+
+### Platform Implementations
+
+- Linux: D-Bus BlueZ API (`org.bluez`, `GetManagedObjects`)
+- macOS: Stub (requires IOBluetooth framework)
+- Windows: Stub (requires Windows.Devices.Bluetooth API)
+
+### Discovery Lifecycle
+
+```
+init → start_discovery → enumerate → get_info → stop_discovery → shutdown
+```
+
+- One-shot enumeration on start_discovery
+- Device count and info available after discovery
+- No continuous background scanning
+
+### Read-Only Model
+
+- DISCOVER, IDENTIFY, REPORT only
+- No pairing, no connection, no authentication
+- No data transfer, no remote control
+- No device modification
+
+### Dependencies
+
+- Linux: libdbus-1 (D-Bus IPC)
+- Requires BlueZ bluetooth daemon running
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Discovery lifecycle (start, is_discovering, stop)
+- Device enumeration (null, before init, large index, valid, multiple)
+- Type names (all types + invalid enum)
+- Shutdown safety
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2419,4 +2514,5 @@ Tests verify:
 - [x] Step 25: System Hardware Sensors Abstraction
 - [x] Step 26: System Storage & Disk Information Abstraction
 - [x] Step 27: USB & Peripheral Device Enumeration Abstraction
-- [ ] Steps 28-35: (future)
+- [x] Step 28: Bluetooth & Wireless Peripheral Discovery Abstraction
+- [ ] Steps 29-35: (future)

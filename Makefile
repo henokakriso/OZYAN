@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c11 -Iinclude -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
+CFLAGS  = -Wall -Wextra -std=c11 -Iinclude -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE $(shell pkg-config --cflags dbus-1 2>/dev/null)
 LDFLAGS = -ldl -rdynamic
 BUILD   = build
 TARGET  = ozayn
@@ -9,7 +9,7 @@ UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
     PLATFORM_SRC = src/platform/linux/platform_linux.c src/platform/linux/platform_info_linux.c
     PLATFORM_NAME = linux
-    LDFLAGS += -lX11 -lXtst -lasound -lXss -lfontconfig
+    LDFLAGS += -lX11 -lXtst -lasound -lXss -lfontconfig -ldbus-1
 endif
 ifeq ($(UNAME_S),Darwin)
     PLATFORM_SRC = src/platform/macos/platform_macos.c src/platform/macos/platform_info_macos.c

@@ -43,6 +43,7 @@
  *   Y. System Hardware Sensors Abstraction (Step 25)
  *   Z. System Storage & Disk Information Abstraction (Step 26)
  *   AA. USB & Peripheral Device Enumeration Abstraction (Step 27)
+ *   AB. Bluetooth & Wireless Peripheral Discovery Abstraction (Step 28)
  */
 
 /* ================================================================
@@ -1465,6 +1466,67 @@ ozayn_result_t ozayn_peripheral_get_info(size_t index, OzaynPeripheralInfo *info
 /* ---- Peripheral Type Names ---- */
 
 const char *ozayn_peripheral_type_name(OzaynPeripheralType type);
+
+/* ================================================================
+ * AB. Bluetooth & Wireless Peripheral Discovery Abstraction (Step 28)
+ * ================================================================
+ *
+ * Cross-platform Bluetooth device discovery and basic information.
+ * Read-only — no pairing, connection, data transfer, or device control.
+ * Discovers nearby Bluetooth devices with type, name, and signal info.
+ */
+
+/* ---- Bluetooth Types ---- */
+
+typedef enum {
+    OZAYN_BLUETOOTH_UNKNOWN = 0,
+    OZAYN_BLUETOOTH_CLASSIC,
+    OZAYN_BLUETOOTH_LOW_ENERGY
+} OzaynBluetoothType;
+
+/* ---- Bluetooth Device Information ---- */
+
+typedef struct {
+    size_t index;
+
+    OzaynBluetoothType type;
+
+    char id[256];
+    char name[256];
+    char address[64];
+    char description[512];
+
+    int signal_strength;
+    int signal_strength_available;
+
+    int paired;
+    int connected;
+    int available;
+} OzaynBluetoothDeviceInfo;
+
+/* ---- Bluetooth Lifecycle ---- */
+
+ozayn_result_t ozayn_bluetooth_init(void);
+void           ozayn_bluetooth_shutdown(void);
+
+/* ---- Bluetooth Queries ---- */
+
+int  ozayn_bluetooth_is_available(void);
+
+/* ---- Bluetooth Discovery ---- */
+
+ozayn_result_t ozayn_bluetooth_start_discovery(void);
+ozayn_result_t ozayn_bluetooth_stop_discovery(void);
+int  ozayn_bluetooth_is_discovering(void);
+
+/* ---- Bluetooth Device Enumeration ---- */
+
+size_t ozayn_bluetooth_get_device_count(void);
+ozayn_result_t ozayn_bluetooth_get_device_info(size_t index, OzaynBluetoothDeviceInfo *info);
+
+/* ---- Bluetooth Type Names ---- */
+
+const char *ozayn_bluetooth_type_name(OzaynBluetoothType type);
 
 /* ================================================================
  * Platform Lifecycle

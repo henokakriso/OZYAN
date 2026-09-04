@@ -4718,6 +4718,328 @@ const char *ozayn_peripheral_type_name(OzaynPeripheralType type) {
 }
 
 /* ================================================================
+ * AB. Bluetooth & Wireless Peripheral Discovery Abstraction (Step 28)
+ * ================================================================
+ *
+ * Cross-platform Bluetooth device discovery and basic information.
+ * Uses D-Bus BlueZ API on Linux.
+ * Read-only — no pairing, connection, data transfer, or device control.
+ */
+
+#include <dbus/dbus.h>
+
+static int _ozayn_bluetooth_initialized = 0;
+static int _ozayn_bluetooth_discovering = 0;
+static int _ozayn_bluetooth_available = 0;
+#define OZAYN_MAX_BLUETOOTH_DEVICES 128
+
+static OzaynBluetoothDeviceInfo _ozayn_bluetooth_devices[OZAYN_MAX_BLUETOOTH_DEVICES];
+static size_t _ozayn_bluetooth_device_count = 0;
+
+/* Internal helper: check if BlueZ is available via D-Bus */
+static int _ozayn_check_bluez_available(void) {
+    DBusError err;
+    dbus_error_init(&err);
+
+    DBusConnection *conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err);
+    if (!conn || dbus_error_is_set(&err)) {
+        dbus_error_free(&err);
+        return 0;
+    }
+
+    /* Try to call GetManagedObjects on org.bluez */
+    DBusMessage *msg = dbus_message_new_method_call(
+        "org.bluez",
+        "/",
+        "org.freedesktop.DBus.ObjectManager",
+        "GetManagedObjects"
+    );
+
+    if (!msg) {
+        dbus_connection_unref(conn);
+        return 0;
+    }
+
+    DBusMessage *reply = dbus_connection_send_with_reply_and_block(conn, msg, 2000, &err);
+    dbus_message_unref(msg);
+
+    if (!reply || dbus_error_is_set(&err)) {
+        if (reply) dbus_message_unref(reply);
+        dbus_error_free(&err);
+        dbus_connection_unref(conn);
+        return 0;
+    }
+
+    dbus_message_unref(reply);
+    dbus_connection_unref(conn);
+    return 1;
+}
+
+/* Internal helper: enumerate Bluetooth devices via D-Bus */
+static void _ozayn_enumerate_bluetooth_devices(void) {
+    _ozayn_bluetooth_device_count = 0;
+    memset(_ozayn_bluetooth_devices, 0, sizeof(_ozayn_bluetooth_devices));
+
+    DBusError err;
+    dbus_error_init(&err);
+
+    DBusConnection *conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err);
+    if (!conn || dbus_error_is_set(&err)) {
+        dbus_error_free(&err);
+        return;
+    }
+
+    /* Get managed objects from BlueZ */
+    DBusMessage *msg = dbus_message_new_method_call(
+        "org.bluez",
+        "/",
+        "org.freedesktop.DBus.ObjectManager",
+        "GetManagedObjects"
+    );
+
+    if (!msg) {
+        dbus_connection_unref(conn);
+        return;
+    }
+
+    DBusMessage *reply = dbus_connection_send_with_reply_and_block(conn, msg, 5000, &err);
+    dbus_message_unref(msg);
+
+    if (!reply || dbus_error_is_set(&err)) {
+        if (reply) dbus_message_unref(reply);
+        dbus_error_free(&err);
+        dbus_connection_unref(conn);
+        return;
+    }
+
+    /* Parse the reply */
+    DBusMessageIter iter, dict_iter, arr_iter;
+    dbus_message_iter_init(reply, &iter);
+
+    if (dbus_message_iter_get_arg_type(&iter) != DBUS_TYPE_ARRAY) {
+        dbus_message_unref(reply);
+        dbus_connection_unref(conn);
+        return;
+    }
+
+    dbus_message_iter_recurse(&iter, &dict_iter);
+
+    while (dbus_message_iter_get_arg_type(&dict_iter) == DBUS_TYPE_DICT_ENTRY &&
+           _ozayn_bluetooth_device_count < OZAYN_MAX_BLUETOOTH_DEVICES) {
+
+        DBusMessageIter entry_iter;
+        dbus_message_iter_recurse(&dict_iter, &entry_iter);
+
+        /* Get object path */
+        const char *obj_path = NULL;
+        dbus_message_iter_get_basic(&entry_iter, &obj_path);
+
+        /* Only process device objects */
+        if (obj_path && strstr(obj_path, "/dev_")) {
+            OzaynBluetoothDeviceInfo *info = &_ozayn_bluetooth_devices[_ozayn_bluetooth_device_count];
+            memset(info, 0, sizeof(*info));
+            info->index = _ozayn_bluetooth_device_count;
+            info->available = 1;
+            info->signal_strength_available = 0;
+            info->signal_strength = 0;
+
+            /* Extract address from path (format: /org/bluez/hci0/dev_XX_XX_XX_XX_XX_XX) */
+            const char *addr_start = strrchr(obj_path, '_');
+            if (addr_start) {
+                addr_start++;
+                /* Build address in XX:XX:XX:XX:XX:XX format */
+                char addr[18] = {0};
+                int pos = 0;
+                for (int i = 0; i < 6 && addr_start[i*3]; i++) {
+                    if (i > 0) addr[pos++] = ':';
+                    addr[pos++] = addr_start[i*3];
+                    addr[pos++] = addr_start[i*3+1];
+                }
+                strncpy(info->address, addr, sizeof(info->address) - 1);
+            }
+
+            /* Extract device ID from path */
+            const char *dev_id = strrchr(obj_path, '/');
+            if (dev_id) {
+                strncpy(info->id, dev_id + 1, sizeof(info->id) - 1);
+            }
+
+            /* Try to get device properties from the interfaces */
+            DBusMessageIter interfaces_iter;
+            dbus_message_iter_next(&entry_iter);
+            dbus_message_iter_recurse(&entry_iter, &interfaces_iter);
+
+            while (dbus_message_iter_get_arg_type(&interfaces_iter) == DBUS_TYPE_DICT_ENTRY) {
+                DBusMessageIter iface_iter;
+                dbus_message_iter_recurse(&interfaces_iter, &iface_iter);
+
+                const char *iface_name = NULL;
+                dbus_message_iter_get_basic(&iface_iter, &iface_name);
+
+                if (iface_name && strcmp(iface_name, "org.bluez.Device1") == 0) {
+                    /* Parse device properties */
+                    dbus_message_iter_next(&iface_iter);
+                    DBusMessageIter props_iter;
+                    dbus_message_iter_recurse(&iface_iter, &props_iter);
+
+                    while (dbus_message_iter_get_arg_type(&props_iter) == DBUS_TYPE_DICT_ENTRY) {
+                        DBusMessageIter prop_entry;
+                        dbus_message_iter_recurse(&props_iter, &prop_entry);
+
+                        const char *prop_name = NULL;
+                        dbus_message_iter_get_basic(&prop_entry, &prop_name);
+
+                        dbus_message_iter_next(&prop_entry);
+                        DBusMessageIter variant_iter;
+                        dbus_message_iter_recurse(&prop_entry, &variant_iter);
+
+                        if (strcmp(prop_name, "Alias") == 0 || strcmp(prop_name, "Name") == 0) {
+                            const char *val = NULL;
+                            if (dbus_message_iter_get_arg_type(&variant_iter) == DBUS_TYPE_STRING) {
+                                dbus_message_iter_get_basic(&variant_iter, &val);
+                                if (val) strncpy(info->name, val, sizeof(info->name) - 1);
+                            }
+                        } else if (strcmp(prop_name, "Class") == 0) {
+                            dbus_uint32_t dev_class = 0;
+                            if (dbus_message_iter_get_arg_type(&variant_iter) == DBUS_TYPE_UINT32) {
+                                dbus_message_iter_get_basic(&variant_iter, &dev_class);
+                                /* Determine type from device class */
+                                uint8_t major = (dev_class >> 8) & 0x1F;
+                                switch (major) {
+                                    case 0x01: info->type = OZAYN_BLUETOOTH_CLASSIC; break; /* Computer */
+                                    case 0x02: info->type = OZAYN_BLUETOOTH_CLASSIC; break; /* Phone */
+                                    case 0x04: info->type = OZAYN_BLUETOOTH_CLASSIC; break; /* Audio */
+                                    default:   info->type = OZAYN_BLUETOOTH_LOW_ENERGY; break;
+                                }
+                            }
+                        } else if (strcmp(prop_name, "Paired") == 0) {
+                            dbus_bool_t val = FALSE;
+                            if (dbus_message_iter_get_arg_type(&variant_iter) == DBUS_TYPE_BOOLEAN) {
+                                dbus_message_iter_get_basic(&variant_iter, &val);
+                                info->paired = val ? 1 : 0;
+                            }
+                        } else if (strcmp(prop_name, "Connected") == 0) {
+                            dbus_bool_t val = FALSE;
+                            if (dbus_message_iter_get_arg_type(&variant_iter) == DBUS_TYPE_BOOLEAN) {
+                                dbus_message_iter_get_basic(&variant_iter, &val);
+                                info->connected = val ? 1 : 0;
+                            }
+                        } else if (strcmp(prop_name, "RSSI") == 0) {
+                            dbus_int16_t val = 0;
+                            if (dbus_message_iter_get_arg_type(&variant_iter) == DBUS_TYPE_INT16) {
+                                dbus_message_iter_get_basic(&variant_iter, &val);
+                                info->signal_strength = (int)val;
+                                info->signal_strength_available = 1;
+                            }
+                        }
+
+                        dbus_message_iter_next(&props_iter);
+                    }
+                }
+
+                dbus_message_iter_next(&interfaces_iter);
+            }
+
+            /* Set default name if empty */
+            if (info->name[0] == '\0') {
+                snprintf(info->name, sizeof(info->name), "BT Device %s", info->id);
+            }
+
+            _ozayn_bluetooth_device_count++;
+        }
+
+        dbus_message_iter_next(&dict_iter);
+    }
+
+    dbus_message_unref(reply);
+    dbus_connection_unref(conn);
+}
+
+ozayn_result_t ozayn_bluetooth_init(void) {
+    if (_ozayn_bluetooth_initialized) return OZAYN_OK;
+
+    _ozayn_bluetooth_available = _ozayn_check_bluez_available();
+    _ozayn_bluetooth_discovering = 0;
+    _ozayn_bluetooth_device_count = 0;
+    memset(_ozayn_bluetooth_devices, 0, sizeof(_ozayn_bluetooth_devices));
+
+    _ozayn_bluetooth_initialized = 1;
+    LOG_INFO("BLUETOOTH", "Bluetooth subsystem initialized (available=%d)", _ozayn_bluetooth_available);
+    return OZAYN_OK;
+}
+
+void ozayn_bluetooth_shutdown(void) {
+    if (!_ozayn_bluetooth_initialized) return;
+    _ozayn_bluetooth_discovering = 0;
+    _ozayn_bluetooth_device_count = 0;
+    _ozayn_bluetooth_initialized = 0;
+    LOG_INFO("BLUETOOTH", "Bluetooth subsystem shut down");
+}
+
+int ozayn_bluetooth_is_available(void) {
+    if (!_ozayn_bluetooth_initialized) return 0;
+    return _ozayn_bluetooth_available;
+}
+
+ozayn_result_t ozayn_bluetooth_start_discovery(void) {
+    if (!_ozayn_bluetooth_initialized) return OZAYN_ERR;
+    if (!_ozayn_bluetooth_available) return OZAYN_ERR;
+    if (_ozayn_bluetooth_discovering) return OZAYN_OK;
+
+    /* Perform a one-shot enumeration */
+    _ozayn_enumerate_bluetooth_devices();
+    _ozayn_bluetooth_discovering = 1;
+
+    LOG_INFO("BLUETOOTH", "Discovery started (%zu devices found)", _ozayn_bluetooth_device_count);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_bluetooth_stop_discovery(void) {
+    if (!_ozayn_bluetooth_initialized) return OZAYN_ERR;
+    _ozayn_bluetooth_discovering = 0;
+    return OZAYN_OK;
+}
+
+int ozayn_bluetooth_is_discovering(void) {
+    if (!_ozayn_bluetooth_initialized) return 0;
+    return _ozayn_bluetooth_discovering;
+}
+
+size_t ozayn_bluetooth_get_device_count(void) {
+    if (!_ozayn_bluetooth_initialized) return 0;
+    return _ozayn_bluetooth_device_count;
+}
+
+ozayn_result_t ozayn_bluetooth_get_device_info(size_t index, OzaynBluetoothDeviceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    if (!_ozayn_bluetooth_initialized) return OZAYN_ERR;
+
+    /* Initialize output safely */
+    memset(info, 0, sizeof(*info));
+    info->index = 0;
+    info->type = OZAYN_BLUETOOTH_UNKNOWN;
+    info->signal_strength_available = 0;
+    info->signal_strength = 0;
+    info->paired = 0;
+    info->connected = 0;
+    info->available = 0;
+
+    if (index >= _ozayn_bluetooth_device_count) return OZAYN_ERR;
+
+    *info = _ozayn_bluetooth_devices[index];
+    return OZAYN_OK;
+}
+
+const char *ozayn_bluetooth_type_name(OzaynBluetoothType type) {
+    switch (type) {
+        case OZAYN_BLUETOOTH_UNKNOWN:      return "Unknown";
+        case OZAYN_BLUETOOTH_CLASSIC:      return "Classic";
+        case OZAYN_BLUETOOTH_LOW_ENERGY:   return "Low Energy";
+        default:                           return "Unknown";
+    }
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *
