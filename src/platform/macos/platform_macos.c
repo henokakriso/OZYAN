@@ -2554,6 +2554,64 @@ const char *ozayn_system_event_type_name(OzaynSystemEventType type) {
 }
 
 /* ================================================================
+ * AD. System Resource Monitoring Abstraction (Step 30)
+ * ================================================================
+ * Stub: macOS resource monitoring requires host_processor_info() / mach_host_self().
+ */
+
+static int _ozayn_resources_initialized = 0;
+
+ozayn_result_t ozayn_resources_init(void) {
+    if (_ozayn_resources_initialized) return OZAYN_OK;
+    _ozayn_resources_initialized = 1;
+    return OZAYN_OK;
+}
+
+void ozayn_resources_shutdown(void) {
+    _ozayn_resources_initialized = 0;
+}
+
+int ozayn_resources_is_available(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_resources_get_cpu_usage(double *usage_percent) {
+    if (usage_percent) *usage_percent = 0.0;
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+ozayn_result_t ozayn_resources_get_memory_usage(uint64_t *total_bytes, uint64_t *used_bytes, uint64_t *available_bytes) {
+    if (total_bytes) *total_bytes = 0;
+    if (used_bytes) *used_bytes = 0;
+    if (available_bytes) *available_bytes = 0;
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+ozayn_result_t ozayn_resources_get_process_count(size_t *count) {
+    if (count) *count = 0;
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+ozayn_result_t ozayn_resources_get_load_average(double *load_1m, double *load_5m, double *load_15m) {
+    if (load_1m)  *load_1m  = 0.0;
+    if (load_5m)  *load_5m  = 0.0;
+    if (load_15m) *load_15m = 0.0;
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+ozayn_result_t ozayn_resources_get_info(OzaynResourceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynResourceInfo));
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+    info->available = 0;
+    return OZAYN_ERR; /* Stub */
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 

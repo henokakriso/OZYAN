@@ -45,6 +45,7 @@
  *   AA. USB & Peripheral Device Enumeration Abstraction (Step 27)
  *   AB. Bluetooth & Wireless Peripheral Discovery Abstraction (Step 28)
  *   AC. System Event & Hardware Change Notification Abstraction (Step 29)
+ *   AD. System Resource Monitoring Abstraction (Step 30)
  */
 
 /* ================================================================
@@ -1591,6 +1592,52 @@ ozayn_result_t ozayn_system_event_poll(OzaynSystemEvent *event);
 /* ---- System Event Type Names ---- */
 
 const char *ozayn_system_event_type_name(OzaynSystemEventType type);
+
+/* ================================================================
+ * AD. System Resource Monitoring Abstraction (Step 30)
+ * ================================================================
+ *
+ * Cross-platform read-only system resource monitoring.
+ * Provides current CPU usage, memory usage, process count,
+ * and load average where supported by the operating system.
+ * No background monitoring — caller explicitly queries resources.
+ */
+
+/* ---- Resource Information Structure ---- */
+
+typedef struct {
+    int available;                    /* 1 if the resource monitoring system is available */
+
+    double cpu_usage_percent;         /* System-wide CPU usage: 0.0–100.0 */
+    int cpu_usage_available;          /* 1 if cpu_usage_percent is valid */
+
+    uint64_t memory_total_bytes;      /* Total physical memory in bytes */
+    uint64_t memory_used_bytes;       /* Used physical memory in bytes */
+    uint64_t memory_available_bytes;  /* Available physical memory in bytes */
+    int memory_usage_available;       /* 1 if memory values are valid */
+
+    size_t process_count;             /* Approximate number of running processes */
+    int process_count_available;      /* 1 if process_count is valid */
+
+    double load_average_1m;           /* 1-minute load average */
+    double load_average_5m;           /* 5-minute load average */
+    double load_average_15m;          /* 15-minute load average */
+    int load_average_available;       /* 1 if load averages are valid */
+} OzaynResourceInfo;
+
+/* ---- Resource Monitoring Lifecycle ---- */
+
+ozayn_result_t ozayn_resources_init(void);
+void           ozayn_resources_shutdown(void);
+
+/* ---- Resource Monitoring Queries ---- */
+
+int  ozayn_resources_is_available(void);
+ozayn_result_t ozayn_resources_get_info(OzaynResourceInfo *info);
+ozayn_result_t ozayn_resources_get_cpu_usage(double *usage_percent);
+ozayn_result_t ozayn_resources_get_memory_usage(uint64_t *total_bytes, uint64_t *used_bytes, uint64_t *available_bytes);
+ozayn_result_t ozayn_resources_get_process_count(size_t *count);
+ozayn_result_t ozayn_resources_get_load_average(double *load_1m, double *load_5m, double *load_15m);
 
 /* ================================================================
  * Platform Lifecycle

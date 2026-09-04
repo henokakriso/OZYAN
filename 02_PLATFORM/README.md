@@ -2582,6 +2582,93 @@ Tests verify:
 - Type names (all types + invalid enum)
 - Shutdown safety
 
+## Step 30 — System Resource Monitoring Abstraction
+
+Cross-platform read-only system resource monitoring.
+
+### Supported Metrics
+
+| Metric | Description | Linux Source |
+|--------|-------------|--------------|
+| CPU Usage | System-wide CPU utilization (0.0–100.0%) | `/proc/stat` (two-sample delta) |
+| Memory | Total, used, available physical memory | `/proc/meminfo` + `sysinfo()` fallback |
+| Process Count | Approximate number of running processes | `/proc` directory enumeration |
+| Load Average | 1m, 5m, 15m load averages | `getloadavg()` + `/proc/loadavg` fallback |
+
+### Public API
+
+```c
+ozayn_result_t ozayn_resources_init(void);
+void           ozayn_resources_shutdown(void);
+int            ozayn_resources_is_available(void);
+
+ozayn_result_t ozayn_resources_get_info(OzaynResourceInfo *info);
+ozayn_result_t ozayn_resources_get_cpu_usage(double *usage_percent);
+ozayn_result_t ozayn_resources_get_memory_usage(uint64_t *total_bytes, uint64_t *used_bytes, uint64_t *available_bytes);
+ozayn_result_t ozayn_resources_get_process_count(size_t *count);
+ozayn_result_t ozayn_resources_get_load_average(double *load_1m, double *load_5m, double *load_15m);
+```
+
+### Architecture
+
+```
+OZAYN
+  ↓
+Platform API
+  ↓
+Resource Monitoring Abstraction
+  ↓
+Operating System
+```
+
+### CPU Measurement
+
+Uses two-sample delta from `/proc/stat`:
+1. First call sets baseline (idle + total ticks)
+2. Second call computes delta and derives usage percentage
+3. Results clamped to 0.0–100.0, NaN/infinity rejected
+
+### Memory Measurement
+
+Priority order:
+1. `/proc/meminfo` — MemTotal, MemAvailable (or MemFree + Buffers + Cached fallback)
+2. `sysinfo()` — totalram, freeram + bufferram fallback
+
+### Security Model
+
+- Read-only — no system modification
+- No process inspection beyond counting
+- No private data collection (command lines, environment variables)
+- No network transmission
+- No persistent history
+- No background monitoring threads
+
+### Platform Availability
+
+| Platform | Status |
+|----------|--------|
+| Linux | Fully implemented |
+| macOS | Stub (requires `host_processor_info()` / `mach_host_self()`) |
+| Windows | Stub (requires `GlobalMemoryStatusEx` / `GetSystemTimes`) |
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- CPU usage range validation (0.0–100.0, no NaN/infinity)
+- Memory consistency (total > 0, available <= total, used <= total)
+- Process count (count > 0 when available)
+- Load average (values >= 0 when available)
+- Full info query with all fields
+- Null parameter handling
+- Multiple consecutive queries (stability)
+- Query after shutdown
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2613,4 +2700,5 @@ Tests verify:
 - [x] Step 27: USB & Peripheral Device Enumeration Abstraction
 - [x] Step 28: Bluetooth & Wireless Peripheral Discovery Abstraction
 - [x] Step 29: System Event & Hardware Change Notification Abstraction
-- [ ] Steps 30-35: (future)
+- [x] Step 30: System Resource Monitoring Abstraction
+- [ ] Steps 31-35: (future)

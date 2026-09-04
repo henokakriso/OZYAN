@@ -5664,6 +5664,294 @@ const char *ozayn_key_name(OzaynKey key) {
 }
 
 /* ================================================================
+ * AD. System Resource Monitoring Abstraction (Step 30)
+ * ================================================================
+ *
+ * Cross-platform read-only system resource monitoring.
+ * Linux implementation using /proc/stat, /proc/meminfo, /proc/loadavg,
+ * and sysinfo().
+ */
+
+static int _ozayn_resources_initialized = 0;
+
+/* Internal state for CPU measurement (two-sample delta) */
+static uint64_t _ozayn_cpu_prev_idle = 0;
+static uint64_t _ozayn_cpu_prev_total = 0;
+static int _ozayn_cpu_baseline_set = 0;
+
+/* Internal helper: read /proc/stat for CPU times */
+static int _ozayn_read_proc_stat(uint64_t *idle, uint64_t *total) {
+    FILE *f = fopen("/proc/stat", "r");
+    if (!f) return 0;
+
+    char line[512];
+    if (fgets(line, sizeof(line), f) == NULL) {
+        fclose(f);
+        return 0;
+    }
+    fclose(f);
+
+    /* Line format: cpu user nice system idle iowait irq softirq steal ... */
+    unsigned long long user, nice, system, idle_val, iowait, irq, softirq, steal;
+    int matched = sscanf(line, "cpu %llu %llu %llu %llu %llu %llu %llu %llu",
+                         &user, &nice, &system, &idle_val, &iowait, &irq, &softirq, &steal);
+    if (matched < 4) return 0;
+
+    *idle = idle_val + iowait;
+    *total = user + nice + system + idle_val + iowait + irq + softirq + steal;
+    return 1;
+}
+
+/* Internal helper: clamp double to 0.0–100.0 */
+static double _ozayn_clamp_percent(double val) {
+    if (val < 0.0) return 0.0;
+    if (val > 100.0) return 100.0;
+    return val;
+}
+
+/* Internal helper: check if double is finite */
+static int _ozayn_is_finite(double val) {
+    return (val == val) && (val - val == 0.0);
+}
+
+ozayn_result_t ozayn_resources_init(void) {
+    if (_ozayn_resources_initialized) return OZAYN_OK;
+
+    _ozayn_cpu_baseline_set = 0;
+    _ozayn_cpu_prev_idle = 0;
+    _ozayn_cpu_prev_total = 0;
+
+    /* Set baseline for CPU measurement */
+    uint64_t idle, total;
+    if (_ozayn_read_proc_stat(&idle, &total)) {
+        _ozayn_cpu_prev_idle = idle;
+        _ozayn_cpu_prev_total = total;
+        _ozayn_cpu_baseline_set = 1;
+    }
+
+    _ozayn_resources_initialized = 1;
+    LOG_INFO("RESOURCES", "Resource monitoring initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_resources_shutdown(void) {
+    _ozayn_resources_initialized = 0;
+    _ozayn_cpu_baseline_set = 0;
+}
+
+int ozayn_resources_is_available(void) {
+    return _ozayn_resources_initialized;
+}
+
+ozayn_result_t ozayn_resources_get_cpu_usage(double *usage_percent) {
+    if (!usage_percent) return OZAYN_ERR_NULL;
+    *usage_percent = 0.0;
+
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+
+    uint64_t idle, total;
+    if (!_ozayn_read_proc_stat(&idle, &total)) return OZAYN_ERR;
+
+    if (!_ozayn_cpu_baseline_set) {
+        _ozayn_cpu_prev_idle = idle;
+        _ozayn_cpu_prev_total = total;
+        _ozayn_cpu_baseline_set = 1;
+        return OZAYN_ERR; /* Need second sample */
+    }
+
+    uint64_t diff_idle = idle - _ozayn_cpu_prev_idle;
+    uint64_t diff_total = total - _ozayn_cpu_prev_total;
+
+    _ozayn_cpu_prev_idle = idle;
+    _ozayn_cpu_prev_total = total;
+
+    if (diff_total == 0) {
+        *usage_percent = 0.0;
+        return OZAYN_OK;
+    }
+
+    double usage = (1.0 - ((double)diff_idle / (double)diff_total)) * 100.0;
+    usage = _ozayn_clamp_percent(usage);
+
+    if (!_ozayn_is_finite(usage)) usage = 0.0;
+
+    *usage_percent = usage;
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_resources_get_memory_usage(uint64_t *total_bytes, uint64_t *used_bytes, uint64_t *available_bytes) {
+    if (total_bytes) *total_bytes = 0;
+    if (used_bytes) *used_bytes = 0;
+    if (available_bytes) *available_bytes = 0;
+
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+
+    /* Try /proc/meminfo first (more detailed) */
+    FILE *f = fopen("/proc/meminfo", "r");
+    if (f) {
+        uint64_t mem_total = 0, mem_available = 0, mem_free = 0, buffers = 0, cached = 0;
+        char line[256];
+        int found_total = 0, found_avail = 0;
+
+        while (fgets(line, sizeof(line), f)) {
+            if (sscanf(line, "MemTotal: %lu kB", &mem_total) == 1) found_total = 1;
+            else if (sscanf(line, "MemAvailable: %lu kB", &mem_available) == 1) found_avail = 1;
+            else if (sscanf(line, "MemFree: %lu kB", &mem_free) == 1) { /* keep as fallback */ }
+            else if (sscanf(line, "Buffers: %lu kB", &buffers) == 1) { /* keep as fallback */ }
+            else if (sscanf(line, "Cached: %lu kB", &cached) == 1) { /* keep as fallback */ }
+
+            if (found_total && found_avail) break;
+        }
+        fclose(f);
+
+        if (found_total) {
+            uint64_t tot = mem_total * 1024;
+            uint64_t avail;
+
+            if (found_avail) {
+                avail = mem_available * 1024;
+            } else {
+                avail = (mem_free + buffers + cached) * 1024;
+            }
+
+            if (avail > tot) avail = tot;
+            uint64_t used = tot - avail;
+
+            if (total_bytes)     *total_bytes = tot;
+            if (used_bytes)      *used_bytes = used;
+            if (available_bytes) *available_bytes = avail;
+
+            return OZAYN_OK;
+        }
+    }
+
+    /* Fallback to sysinfo() */
+    struct sysinfo si;
+    if (sysinfo(&si) == 0) {
+        uint64_t tot = (uint64_t)si.totalram * si.mem_unit;
+        uint64_t free_mem = (uint64_t)si.freeram * si.mem_unit;
+        uint64_t buf = (uint64_t)si.bufferram * si.mem_unit;
+
+        uint64_t avail = free_mem + buf;
+        if (avail > tot) avail = tot;
+        uint64_t used = tot - avail;
+
+        if (total_bytes)     *total_bytes = tot;
+        if (used_bytes)      *used_bytes = used;
+        if (available_bytes) *available_bytes = avail;
+
+        return OZAYN_OK;
+    }
+
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_resources_get_process_count(size_t *count) {
+    if (!count) return OZAYN_ERR_NULL;
+    *count = 0;
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+
+    DIR *proc = opendir("/proc");
+    if (!proc) return OZAYN_ERR;
+
+    size_t n = 0;
+    struct dirent *ent;
+    while ((ent = readdir(proc)) != NULL) {
+        /* Count numeric entries (PIDs) */
+        if (ent->d_name[0] >= '1' && ent->d_name[0] <= '9') {
+            int is_pid = 1;
+            for (const char *p = ent->d_name; *p; p++) {
+                if (*p < '0' || *p > '9') { is_pid = 0; break; }
+            }
+            if (is_pid) n++;
+        }
+    }
+    closedir(proc);
+
+    *count = n;
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_resources_get_load_average(double *load_1m, double *load_5m, double *load_15m) {
+    if (load_1m)  *load_1m = 0.0;
+    if (load_5m)  *load_5m = 0.0;
+    if (load_15m) *load_15m = 0.0;
+
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+
+    /* Use getloadavg() if available */
+#if defined(__linux__) || defined(__APPLE__)
+    double avgs[3];
+    int ret = getloadavg(avgs, 3);
+    if (ret == 3) {
+        if (load_1m)  *load_1m  = avgs[0];
+        if (load_5m)  *load_5m  = avgs[1];
+        if (load_15m) *load_15m = avgs[2];
+        return OZAYN_OK;
+    }
+#endif
+
+    /* Fallback: read /proc/loadavg */
+    FILE *f = fopen("/proc/loadavg", "r");
+    if (!f) return OZAYN_ERR;
+
+    double l1, l5, l15;
+    if (fscanf(f, "%lf %lf %lf", &l1, &l5, &l15) == 3) {
+        if (load_1m)  *load_1m  = l1;
+        if (load_5m)  *load_5m  = l5;
+        if (load_15m) *load_15m = l15;
+        fclose(f);
+        return OZAYN_OK;
+    }
+
+    fclose(f);
+    return OZAYN_ERR;
+}
+
+ozayn_result_t ozayn_resources_get_info(OzaynResourceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynResourceInfo));
+
+    if (!_ozayn_resources_initialized) return OZAYN_ERR;
+
+    info->available = 1;
+
+    /* CPU */
+    double cpu = 0.0;
+    if (ozayn_resources_get_cpu_usage(&cpu) == OZAYN_OK) {
+        info->cpu_usage_percent = cpu;
+        info->cpu_usage_available = 1;
+    }
+
+    /* Memory */
+    uint64_t total = 0, used = 0, avail = 0;
+    if (ozayn_resources_get_memory_usage(&total, &used, &avail) == OZAYN_OK) {
+        info->memory_total_bytes = total;
+        info->memory_used_bytes = used;
+        info->memory_available_bytes = avail;
+        info->memory_usage_available = 1;
+    }
+
+    /* Process count */
+    size_t pcount = 0;
+    if (ozayn_resources_get_process_count(&pcount) == OZAYN_OK) {
+        info->process_count = pcount;
+        info->process_count_available = 1;
+    }
+
+    /* Load average */
+    double l1 = 0, l5 = 0, l15 = 0;
+    if (ozayn_resources_get_load_average(&l1, &l5, &l15) == OZAYN_OK) {
+        info->load_average_1m = l1;
+        info->load_average_5m = l5;
+        info->load_average_15m = l15;
+        info->load_average_available = 1;
+    }
+
+    return OZAYN_OK;
+}
+
+/* ================================================================
  * Platform Detection & Initialization
  * ================================================================ */
 
