@@ -5040,6 +5040,271 @@ const char *ozayn_bluetooth_type_name(OzaynBluetoothType type) {
 }
 
 /* ================================================================
+ * AC. System Event & Hardware Change Notification Abstraction (Step 29)
+ * ================================================================
+ *
+ * Cross-platform system event detection and hardware change notifications.
+ * Uses inotify for filesystem monitoring on /sys paths.
+ * Read-only — no system modification, no persistent history.
+ */
+
+#include <sys/inotify.h>
+#include <poll.h>
+#include <unistd.h>
+#include <time.h>
+
+static int _ozayn_system_event_initialized = 0;
+static int _ozayn_system_event_running = 0;
+static int _ozayn_system_event_inotify_fd = -1;
+
+#define OZAYN_SYSTEM_EVENT_QUEUE_SIZE 64
+#define OZAYN_MAX_INOTIFY_WATCHES 16
+
+static OzaynSystemEvent _ozayn_system_event_queue[OZAYN_SYSTEM_EVENT_QUEUE_SIZE];
+static int _ozayn_system_event_queue_head = 0;
+static int _ozayn_system_event_queue_tail = 0;
+static int _ozayn_system_event_queue_count = 0;
+
+/* inotify watch descriptors and their associated event types */
+static int _ozayn_inotify_watches[OZAYN_MAX_INOTIFY_WATCHES];
+static OzaynSystemEventType _ozayn_inotify_watch_types[OZAYN_MAX_INOTIFY_WATCHES];
+static int _ozayn_inotify_watch_count = 0;
+
+/* Internal helper: get current time in milliseconds */
+static uint64_t _ozayn_get_timestamp_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
+
+/* Internal helper: push event to queue */
+static void _ozayn_push_event(OzaynSystemEventType type, const char *source, const char *desc) {
+    if (_ozayn_system_event_queue_count >= OZAYN_SYSTEM_EVENT_QUEUE_SIZE) {
+        /* Drop oldest event */
+        _ozayn_system_event_queue_head = (_ozayn_system_event_queue_head + 1) % OZAYN_SYSTEM_EVENT_QUEUE_SIZE;
+        _ozayn_system_event_queue_count--;
+    }
+
+    OzaynSystemEvent *evt = &_ozayn_system_event_queue[_ozayn_system_event_queue_tail];
+    evt->type = type;
+    evt->timestamp_ms = _ozayn_get_timestamp_ms();
+    evt->available = 1;
+
+    if (source) strncpy(evt->source, source, sizeof(evt->source) - 1);
+    else evt->source[0] = '\0';
+
+    if (desc) strncpy(evt->description, desc, sizeof(evt->description) - 1);
+    else evt->description[0] = '\0';
+
+    _ozayn_system_event_queue_tail = (_ozayn_system_event_queue_tail + 1) % OZAYN_SYSTEM_EVENT_QUEUE_SIZE;
+    _ozayn_system_event_queue_count++;
+}
+
+/* Internal helper: add inotify watch */
+static void _ozayn_add_watch(const char *path, OzaynSystemEventType type) {
+    if (_ozayn_inotify_watch_count >= OZAYN_MAX_INOTIFY_WATCHES) return;
+    if (_ozayn_system_event_inotify_fd < 0) return;
+
+    int wd = inotify_add_watch(_ozayn_system_event_inotify_fd, path,
+                                IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO);
+    if (wd >= 0) {
+        _ozayn_inotify_watches[_ozayn_inotify_watch_count] = wd;
+        _ozayn_inotify_watch_types[_ozayn_inotify_watch_count] = type;
+        _ozayn_inotify_watch_count++;
+    }
+}
+
+/* Internal helper: map watch descriptor to event type */
+static OzaynSystemEventType _ozayn_watch_to_type(int wd) {
+    for (int i = 0; i < _ozayn_inotify_watch_count; i++) {
+        if (_ozayn_inotify_watches[i] == wd)
+            return _ozayn_inotify_watch_types[i];
+    }
+    return OZAYN_SYSTEM_EVENT_NONE;
+}
+
+ozayn_result_t ozayn_system_event_init(void) {
+    if (_ozayn_system_event_initialized) return OZAYN_OK;
+
+    _ozayn_system_event_inotify_fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    if (_ozayn_system_event_inotify_fd < 0) {
+        LOG_WARN("SYSTEM_EVENT", "inotify init failed");
+    }
+
+    _ozayn_system_event_running = 0;
+    _ozayn_system_event_queue_head = 0;
+    _ozayn_system_event_queue_tail = 0;
+    _ozayn_system_event_queue_count = 0;
+    _ozayn_inotify_watch_count = 0;
+
+    _ozayn_system_event_initialized = 1;
+    LOG_INFO("SYSTEM_EVENT", "System event subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_system_event_shutdown(void) {
+    if (!_ozayn_system_event_initialized) return;
+
+    /* Remove all watches */
+    for (int i = 0; i < _ozayn_inotify_watch_count; i++) {
+        if (_ozayn_inotify_watches[i] >= 0)
+            inotify_rm_watch(_ozayn_system_event_inotify_fd, _ozayn_inotify_watches[i]);
+    }
+    _ozayn_inotify_watch_count = 0;
+
+    if (_ozayn_system_event_inotify_fd >= 0) {
+        close(_ozayn_system_event_inotify_fd);
+        _ozayn_system_event_inotify_fd = -1;
+    }
+
+    _ozayn_system_event_queue_count = 0;
+    _ozayn_system_event_running = 0;
+    _ozayn_system_event_initialized = 0;
+    LOG_INFO("SYSTEM_EVENT", "System event subsystem shut down");
+}
+
+int ozayn_system_event_is_available(void) {
+    if (!_ozayn_system_event_initialized) return 0;
+    return (_ozayn_system_event_inotify_fd >= 0) ? 1 : 0;
+}
+
+ozayn_result_t ozayn_system_event_start(void) {
+    if (!_ozayn_system_event_initialized) return OZAYN_ERR;
+    if (_ozayn_system_event_running) return OZAYN_OK;
+    if (_ozayn_system_event_inotify_fd < 0) return OZAYN_ERR;
+
+    /* Add watches for system paths */
+    _ozayn_add_watch("/sys/class/net", OZAYN_SYSTEM_EVENT_NETWORK_CHANGED);
+    _ozayn_add_watch("/sys/class/power_supply", OZAYN_SYSTEM_EVENT_POWER_CHANGED);
+    _ozayn_add_watch("/sys/class/bluetooth", OZAYN_SYSTEM_EVENT_BLUETOOTH_CHANGED);
+    _ozayn_add_watch("/sys/class/sound", OZAYN_SYSTEM_EVENT_AUDIO_CHANGED);
+    _ozayn_add_watch("/sys/class/drm", OZAYN_SYSTEM_EVENT_DISPLAY_CHANGED);
+    _ozayn_add_watch("/dev", OZAYN_SYSTEM_EVENT_DEVICE_CONNECTED);
+
+    _ozayn_system_event_running = 1;
+    LOG_INFO("SYSTEM_EVENT", "Event monitoring started (%d watches)", _ozayn_inotify_watch_count);
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_system_event_stop(void) {
+    if (!_ozayn_system_event_initialized) return OZAYN_ERR;
+
+    /* Remove all watches */
+    for (int i = 0; i < _ozayn_inotify_watch_count; i++) {
+        if (_ozayn_inotify_watches[i] >= 0 && _ozayn_system_event_inotify_fd >= 0)
+            inotify_rm_watch(_ozayn_system_event_inotify_fd, _ozayn_inotify_watches[i]);
+    }
+    _ozayn_inotify_watch_count = 0;
+
+    _ozayn_system_event_running = 0;
+    return OZAYN_OK;
+}
+
+int ozayn_system_event_is_running(void) {
+    if (!_ozayn_system_event_initialized) return 0;
+    return _ozayn_system_event_running;
+}
+
+ozayn_result_t ozayn_system_event_poll(OzaynSystemEvent *event) {
+    if (!event) return OZAYN_ERR_NULL;
+    if (!_ozayn_system_event_initialized) return OZAYN_ERR;
+
+    /* Initialize safe output */
+    event->type = OZAYN_SYSTEM_EVENT_NONE;
+    event->source[0] = '\0';
+    event->description[0] = '\0';
+    event->timestamp_ms = 0;
+    event->available = 0;
+
+    /* Check internal queue first */
+    if (_ozayn_system_event_queue_count > 0) {
+        *event = _ozayn_system_event_queue[_ozayn_system_event_queue_head];
+        _ozayn_system_event_queue_head = (_ozayn_system_event_queue_head + 1) % OZAYN_SYSTEM_EVENT_QUEUE_SIZE;
+        _ozayn_system_event_queue_count--;
+        return OZAYN_OK;
+    }
+
+    /* No queued events — check inotify (non-blocking) */
+    if (!_ozayn_system_event_running || _ozayn_system_event_inotify_fd < 0) {
+        return OZAYN_ERR;
+    }
+
+    /* Non-blocking poll */
+    struct pollfd pfd = { .fd = _ozayn_system_event_inotify_fd, .events = POLLIN };
+    int ret = poll(&pfd, 1, 0);
+    if (ret <= 0 || !(pfd.revents & POLLIN)) {
+        return OZAYN_ERR; /* No events */
+    }
+
+    /* Read inotify events */
+    char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+    ssize_t len = read(_ozayn_system_event_inotify_fd, buf, sizeof(buf));
+    if (len <= 0) return OZAYN_ERR;
+
+    /* Process first event */
+    const char *ptr = buf;
+    while (ptr < buf + len) {
+        const struct inotify_event *ie = (const struct inotify_event *)ptr;
+
+        if (ie->len > 0) {
+            OzaynSystemEventType evt_type = _ozayn_watch_to_type(ie->wd);
+
+            /* Map inotify flags to event description */
+            char desc[512] = {0};
+            if (ie->mask & IN_CREATE) {
+                snprintf(desc, sizeof(desc), "Created: %s", ie->name);
+                if (evt_type == OZAYN_SYSTEM_EVENT_DEVICE_CONNECTED)
+                    evt_type = OZAYN_SYSTEM_EVENT_DEVICE_CONNECTED;
+            } else if (ie->mask & IN_DELETE) {
+                snprintf(desc, sizeof(desc), "Removed: %s", ie->name);
+                if (evt_type == OZAYN_SYSTEM_EVENT_DEVICE_CONNECTED)
+                    evt_type = OZAYN_SYSTEM_EVENT_DEVICE_DISCONNECTED;
+            } else if (ie->mask & IN_MODIFY) {
+                snprintf(desc, sizeof(desc), "Changed: %s", ie->name);
+            } else {
+                snprintf(desc, sizeof(desc), "Modified: %s", ie->name);
+            }
+
+            event->type = evt_type;
+            event->timestamp_ms = _ozayn_get_timestamp_ms();
+            event->available = 1;
+
+            const char *source = "system";
+            if (ie->wd == _ozayn_inotify_watches[0]) source = "network";
+            else if (_ozayn_inotify_watch_count > 1 && ie->wd == _ozayn_inotify_watches[1]) source = "power";
+            else if (_ozayn_inotify_watch_count > 2 && ie->wd == _ozayn_inotify_watches[2]) source = "bluetooth";
+            else if (_ozayn_inotify_watch_count > 3 && ie->wd == _ozayn_inotify_watches[3]) source = "audio";
+            else if (_ozayn_inotify_watch_count > 4 && ie->wd == _ozayn_inotify_watches[4]) source = "display";
+            else if (_ozayn_inotify_watch_count > 5 && ie->wd == _ozayn_inotify_watches[5]) source = "device";
+
+            strncpy(event->source, source, sizeof(event->source) - 1);
+            strncpy(event->description, desc, sizeof(event->description) - 1);
+
+            return OZAYN_OK;
+        }
+
+        ptr += sizeof(struct inotify_event) + ie->len;
+    }
+
+    return OZAYN_ERR;
+}
+
+const char *ozayn_system_event_type_name(OzaynSystemEventType type) {
+    switch (type) {
+        case OZAYN_SYSTEM_EVENT_NONE:               return "None";
+        case OZAYN_SYSTEM_EVENT_DEVICE_CONNECTED:    return "Device Connected";
+        case OZAYN_SYSTEM_EVENT_DEVICE_DISCONNECTED: return "Device Disconnected";
+        case OZAYN_SYSTEM_EVENT_DISPLAY_CHANGED:     return "Display Changed";
+        case OZAYN_SYSTEM_EVENT_NETWORK_CHANGED:     return "Network Changed";
+        case OZAYN_SYSTEM_EVENT_POWER_CHANGED:       return "Power Changed";
+        case OZAYN_SYSTEM_EVENT_AUDIO_CHANGED:       return "Audio Changed";
+        case OZAYN_SYSTEM_EVENT_SESSION_CHANGED:     return "Session Changed";
+        case OZAYN_SYSTEM_EVENT_BLUETOOTH_CHANGED:   return "Bluetooth Changed";
+        default:                                     return "Unknown";
+    }
+}
+
+/* ================================================================
  * I. Input & Mouse Abstraction (Step 07)
  * ================================================================
  *

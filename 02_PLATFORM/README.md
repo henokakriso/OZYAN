@@ -2485,6 +2485,103 @@ Tests verify:
 - Type names (all types + invalid enum)
 - Shutdown safety
 
+## Step 29 — System Event & Hardware Change Notification Abstraction
+
+Cross-platform system event detection and hardware change notifications. Read-only — no system modification, no persistent history. Detects device, display, network, power, audio, session, bluetooth changes.
+
+### Event Types
+
+```
+NONE, DEVICE_CONNECTED, DEVICE_DISCONNECTED, DISPLAY_CHANGED,
+NETWORK_CHANGED, POWER_CHANGED, AUDIO_CHANGED, SESSION_CHANGED,
+BLUETOOTH_CHANGED
+```
+
+### Public API
+
+```c
+ozayn_result_t ozayn_system_event_init(void);
+void           ozayn_system_event_shutdown(void);
+int            ozayn_system_event_is_available(void);
+ozayn_result_t ozayn_system_event_start(void);
+ozayn_result_t ozayn_system_event_stop(void);
+int            ozayn_system_event_is_running(void);
+ozayn_result_t ozayn_system_event_poll(OzaynSystemEvent *event);
+const char    *ozayn_system_event_type_name(OzaynSystemEventType type);
+```
+
+### Event Information Structure
+
+```c
+typedef struct {
+    OzaynSystemEventType type;
+    char source[128];
+    char description[512];
+    uint64_t timestamp_ms;
+    int available;
+} OzaynSystemEvent;
+```
+
+### Safety
+
+- Non-blocking poll — never freezes runtime
+- Bounded internal event queue (64 events max)
+- Dropped events handled safely (oldest dropped)
+- NULL parameters handled safely
+- No persistent event history
+- No system modification
+- No surveillance or tracking use
+
+### Platform Implementations
+
+- Linux: inotify on /sys paths (net, power_supply, bluetooth, sound, drm, /dev)
+- macOS: Stub (requires IOKit/CoreFoundation notifications)
+- Windows: Stub (requires RegisterDeviceNotification/WM_POWERBROADCAST)
+
+### Event Lifecycle
+
+```
+init → start → poll → poll → ... → stop → shutdown
+```
+
+- Explicit start/stop monitoring
+- No automatic background monitoring during init
+- Bounded queue prevents unbounded memory growth
+- Queue cleanup on shutdown
+
+### Monitored Paths (Linux)
+
+```
+/sys/class/net     → Network Changed
+/sys/class/power_supply → Power Changed
+/sys/class/bluetooth → Bluetooth Changed
+/sys/class/sound   → Audio Changed
+/sys/class/drm     → Display Changed
+/dev               → Device Connected/Disconnected
+```
+
+### Security Model
+
+- No passwords, tokens, or credentials
+- No private data collection
+- No persistent history
+- No network transmission
+- No surveillance use
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Lifecycle control (start, is_running, stop)
+- Polling (null, before init, not started, no event, after stop, repeated)
+- Type names (all types + invalid enum)
+- Shutdown safety
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2515,4 +2612,5 @@ Tests verify:
 - [x] Step 26: System Storage & Disk Information Abstraction
 - [x] Step 27: USB & Peripheral Device Enumeration Abstraction
 - [x] Step 28: Bluetooth & Wireless Peripheral Discovery Abstraction
-- [ ] Steps 29-35: (future)
+- [x] Step 29: System Event & Hardware Change Notification Abstraction
+- [ ] Steps 30-35: (future)

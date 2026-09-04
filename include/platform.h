@@ -44,6 +44,7 @@
  *   Z. System Storage & Disk Information Abstraction (Step 26)
  *   AA. USB & Peripheral Device Enumeration Abstraction (Step 27)
  *   AB. Bluetooth & Wireless Peripheral Discovery Abstraction (Step 28)
+ *   AC. System Event & Hardware Change Notification Abstraction (Step 29)
  */
 
 /* ================================================================
@@ -1527,6 +1528,69 @@ ozayn_result_t ozayn_bluetooth_get_device_info(size_t index, OzaynBluetoothDevic
 /* ---- Bluetooth Type Names ---- */
 
 const char *ozayn_bluetooth_type_name(OzaynBluetoothType type);
+
+/* ================================================================
+ * AC. System Event & Hardware Change Notification Abstraction (Step 29)
+ * ================================================================
+ *
+ * Cross-platform system event detection and hardware change notifications.
+ * Read-only — no system modification, no persistent history.
+ * Detects device, display, network, power, audio, session, bluetooth changes.
+ */
+
+/* ---- System Event Types ---- */
+
+typedef enum {
+    OZAYN_SYSTEM_EVENT_NONE = 0,
+
+    OZAYN_SYSTEM_EVENT_DEVICE_CONNECTED,
+    OZAYN_SYSTEM_EVENT_DEVICE_DISCONNECTED,
+
+    OZAYN_SYSTEM_EVENT_DISPLAY_CHANGED,
+
+    OZAYN_SYSTEM_EVENT_NETWORK_CHANGED,
+
+    OZAYN_SYSTEM_EVENT_POWER_CHANGED,
+
+    OZAYN_SYSTEM_EVENT_AUDIO_CHANGED,
+
+    OZAYN_SYSTEM_EVENT_SESSION_CHANGED,
+
+    OZAYN_SYSTEM_EVENT_BLUETOOTH_CHANGED
+} OzaynSystemEventType;
+
+/* ---- System Event Information ---- */
+
+typedef struct {
+    OzaynSystemEventType type;
+
+    char source[128];
+    char description[512];
+
+    uint64_t timestamp_ms;
+
+    int available;
+} OzaynSystemEvent;
+
+/* ---- System Event Lifecycle ---- */
+
+ozayn_result_t ozayn_system_event_init(void);
+void           ozayn_system_event_shutdown(void);
+
+/* ---- System Event Control ---- */
+
+int  ozayn_system_event_is_available(void);
+ozayn_result_t ozayn_system_event_start(void);
+ozayn_result_t ozayn_system_event_stop(void);
+int  ozayn_system_event_is_running(void);
+
+/* ---- System Event Polling ---- */
+
+ozayn_result_t ozayn_system_event_poll(OzaynSystemEvent *event);
+
+/* ---- System Event Type Names ---- */
+
+const char *ozayn_system_event_type_name(OzaynSystemEventType type);
 
 /* ================================================================
  * Platform Lifecycle

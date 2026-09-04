@@ -2490,6 +2490,70 @@ const char *ozayn_bluetooth_type_name(OzaynBluetoothType type) {
 }
 
 /* ================================================================
+ * AC. System Event & Hardware Change Notification Abstraction (Step 29)
+ * ================================================================
+ * Stub: macOS system event requires IOKit/CoreFoundation notifications.
+ */
+
+static int _ozayn_system_event_initialized = 0;
+static int _ozayn_system_event_running = 0;
+
+ozayn_result_t ozayn_system_event_init(void) {
+    if (_ozayn_system_event_initialized) return OZAYN_OK;
+    _ozayn_system_event_initialized = 1;
+    _ozayn_system_event_running = 0;
+    return OZAYN_OK;
+}
+
+void ozayn_system_event_shutdown(void) {
+    _ozayn_system_event_running = 0;
+    _ozayn_system_event_initialized = 0;
+}
+
+int ozayn_system_event_is_available(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_system_event_start(void) {
+    if (!_ozayn_system_event_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+ozayn_result_t ozayn_system_event_stop(void) {
+    _ozayn_system_event_running = 0;
+    return OZAYN_OK;
+}
+
+int ozayn_system_event_is_running(void) {
+    return _ozayn_system_event_running;
+}
+
+ozayn_result_t ozayn_system_event_poll(OzaynSystemEvent *event) {
+    if (!event) return OZAYN_ERR_NULL;
+    event->type = OZAYN_SYSTEM_EVENT_NONE;
+    event->source[0] = '\0';
+    event->description[0] = '\0';
+    event->timestamp_ms = 0;
+    event->available = 0;
+    return OZAYN_ERR; /* Stub */
+}
+
+const char *ozayn_system_event_type_name(OzaynSystemEventType type) {
+    switch (type) {
+        case OZAYN_SYSTEM_EVENT_NONE:               return "None";
+        case OZAYN_SYSTEM_EVENT_DEVICE_CONNECTED:    return "Device Connected";
+        case OZAYN_SYSTEM_EVENT_DEVICE_DISCONNECTED: return "Device Disconnected";
+        case OZAYN_SYSTEM_EVENT_DISPLAY_CHANGED:     return "Display Changed";
+        case OZAYN_SYSTEM_EVENT_NETWORK_CHANGED:     return "Network Changed";
+        case OZAYN_SYSTEM_EVENT_POWER_CHANGED:       return "Power Changed";
+        case OZAYN_SYSTEM_EVENT_AUDIO_CHANGED:       return "Audio Changed";
+        case OZAYN_SYSTEM_EVENT_SESSION_CHANGED:     return "Session Changed";
+        case OZAYN_SYSTEM_EVENT_BLUETOOTH_CHANGED:   return "Bluetooth Changed";
+        default:                                     return "Unknown";
+    }
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 
