@@ -239,6 +239,7 @@ This dashboard will display only non-sensitive status information. It will never
 | 09 | Secure Key Storage & Platform Key Store | COMPLETE |
 | 10 | Key Lifecycle & Rotation | COMPLETE |
 | 11 | Secure Vault Implementation | COMPLETE |
+| 12 | Identity Foundation & Identity Data Boundary | COMPLETE |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
