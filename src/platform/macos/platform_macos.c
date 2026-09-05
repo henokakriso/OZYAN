@@ -2715,6 +2715,49 @@ const char *ozayn_sys_service_state_name(OzaynServiceState state) {
 }
 
 /* ================================================================
+ * AG. System Security & Firewall State Abstraction (Step 33)
+ * ================================================================
+ * Stub: macOS security state requires pf/ALF APIs.
+ */
+
+static int _ozayn_syssec_initialized = 0;
+
+ozayn_result_t ozayn_sys_security_init(void) {
+    if (_ozayn_syssec_initialized) return OZAYN_OK;
+    _ozayn_syssec_initialized = 1;
+    return OZAYN_OK;
+}
+
+void ozayn_sys_security_shutdown(void) {
+    _ozayn_syssec_initialized = 0;
+}
+
+int ozayn_sys_security_is_available(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_sys_security_get_info(OzaynSecurityInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynSecurityInfo));
+    if (!_ozayn_syssec_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+OzaynSecurityState ozayn_sys_security_get_firewall_state(void) {
+    return OZAYN_SECURITY_UNKNOWN; /* Stub */
+}
+
+const char *ozayn_sys_security_state_name(OzaynSecurityState state) {
+    switch (state) {
+        case OZAYN_SECURITY_UNKNOWN:     return "Unknown";
+        case OZAYN_SECURITY_ENABLED:     return "Enabled";
+        case OZAYN_SECURITY_DISABLED:    return "Disabled";
+        case OZAYN_SECURITY_UNAVAILABLE: return "Unavailable";
+        default:                         return "Unknown";
+    }
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 

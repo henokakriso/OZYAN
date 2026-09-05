@@ -48,6 +48,7 @@
  *   AD. System Resource Monitoring Abstraction (Step 30)
  *   AE. Network Configuration & Routing Information Abstraction (Step 31)
  *   AF. System Service & Background Process Information Abstraction (Step 32)
+ *   AG. System Security & Firewall State Abstraction (Step 33)
  */
 
 /* ================================================================
@@ -1759,6 +1760,54 @@ ozayn_result_t ozayn_service_find(const char *name, OzaynServiceInfo *info);
 
 const char *ozayn_sys_service_type_name(OzaynServiceType type);
 const char *ozayn_sys_service_state_name(OzaynServiceState state);
+
+/* ================================================================
+ * AG. System Security & Firewall State Abstraction (Step 33)
+ * ================================================================
+ *
+ * Cross-platform read-only system security and firewall state detection.
+ * Diagnostic only — no security modification, no rule changes, no control.
+ * Detects whether firewall/antivirus protection appears enabled or disabled.
+ */
+
+/* ---- Security States ---- */
+
+typedef enum {
+    OZAYN_SECURITY_UNKNOWN = 0,
+    OZAYN_SECURITY_ENABLED,
+    OZAYN_SECURITY_DISABLED,
+    OZAYN_SECURITY_UNAVAILABLE
+} OzaynSecurityState;
+
+/* ---- Security Information ---- */
+
+#define OZAYN_MAX_SECURITY_NAME 256
+
+typedef struct {
+    int available;
+
+    OzaynSecurityState firewall_state;
+    char firewall_name[OZAYN_MAX_SECURITY_NAME];
+    int firewall_state_available;
+
+    OzaynSecurityState antivirus_state;
+    int antivirus_state_available;
+} OzaynSecurityInfo;
+
+/* ---- Security Lifecycle ---- */
+
+ozayn_result_t ozayn_sys_security_init(void);
+void           ozayn_sys_security_shutdown(void);
+
+/* ---- Security Queries ---- */
+
+int  ozayn_sys_security_is_available(void);
+ozayn_result_t ozayn_sys_security_get_info(OzaynSecurityInfo *info);
+OzaynSecurityState ozayn_sys_security_get_firewall_state(void);
+
+/* ---- Security State Names ---- */
+
+const char *ozayn_sys_security_state_name(OzaynSecurityState state);
 
 /* ================================================================
  * Platform Lifecycle

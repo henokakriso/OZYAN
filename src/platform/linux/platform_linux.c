@@ -6528,6 +6528,187 @@ const char *ozayn_sys_service_state_name(OzaynServiceState state) {
 }
 
 /* ================================================================
+ * AG. System Security & Firewall State Abstraction (Step 33)
+ * ================================================================
+ *
+ * Cross-platform read-only system security and firewall state detection.
+ * Linux implementation using native filesystem detection.
+ * Read-only — no security modification, no rule changes, no control.
+ */
+
+static int _ozayn_syssec_initialized = 0;
+static OzaynSecurityInfo _ozayn_syssec_info = {0};
+
+/* Internal helper: check if iptables has loaded tables */
+static int _ozayn_check_iptables(void) {
+    FILE *f = fopen("/proc/net/ip_tables_names", "r");
+    if (!f) return 0;
+
+    char line[256];
+    int found = 0;
+    while (fgets(line, sizeof(line), f)) {
+        /* Trim whitespace */
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        char *end = p + strlen(p) - 1;
+        while (end > p && (*end == '\n' || *end == '\r' || *end == ' ')) *end-- = '\0';
+
+        if (strlen(p) > 0) {
+            found = 1;
+            break;
+        }
+    }
+    fclose(f);
+    return found;
+}
+
+/* Internal helper: check if nftables is available */
+static int _ozayn_check_nftables(void) {
+    /* Check /proc/net/nf_tables or /proc/net/nf_tables_groups */
+    FILE *f = fopen("/proc/net/nf_tables", "r");
+    if (f) {
+        fclose(f);
+        return 1;
+    }
+    f = fopen("/proc/net/nf_tables_groups", "r");
+    if (f) {
+        fclose(f);
+        return 1;
+    }
+    return 0;
+}
+
+/* Internal helper: check if firewalld is running */
+static int _ozayn_check_firewalld(void) {
+    /* Check if /run/firewalld exists (runtime directory) */
+    struct stat st;
+    if (stat("/run/firewalld", &st) == 0 && S_ISDIR(st.st_mode)) {
+        return 1;
+    }
+    /* Check /etc/firewalld exists (configuration directory) */
+    if (stat("/etc/firewalld", &st) == 0 && S_ISDIR(st.st_mode)) {
+        return 1;
+    }
+    return 0;
+}
+
+/* Internal helper: check if ufw is active */
+static int _ozayn_check_ufw(void) {
+    /* Check /etc/ufw/ufw.conf for ENABLED=yes */
+    FILE *f = fopen("/etc/ufw/ufw.conf", "r");
+    if (!f) return 0;
+
+    char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        /* Look for ENABLED=yes */
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (strncmp(p, "ENABLED=", 8) == 0) {
+            p += 8;
+            while (*p == ' ' || *p == '\t') p++;
+            if (strncmp(p, "yes", 3) == 0) {
+                fclose(f);
+                return 1;
+            }
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
+static void _ozayn_detect_firewall(void) {
+    _ozayn_syssec_info.available = 1;
+    _ozayn_syssec_info.firewall_state = OZAYN_SECURITY_UNKNOWN;
+    _ozayn_syssec_info.firewall_state_available = 0;
+    _ozayn_syssec_info.firewall_name[0] = '\0';
+    _ozayn_syssec_info.antivirus_state = OZAYN_SECURITY_UNKNOWN;
+    _ozayn_syssec_info.antivirus_state_available = 0;
+
+    /* Check iptables */
+    if (_ozayn_check_iptables()) {
+        _ozayn_syssec_info.firewall_state = OZAYN_SECURITY_ENABLED;
+        _ozayn_syssec_info.firewall_state_available = 1;
+        strncpy(_ozayn_syssec_info.firewall_name, "iptables", OZAYN_MAX_SECURITY_NAME - 1);
+        return;
+    }
+
+    /* Check nftables */
+    if (_ozayn_check_nftables()) {
+        _ozayn_syssec_info.firewall_state = OZAYN_SECURITY_ENABLED;
+        _ozayn_syssec_info.firewall_state_available = 1;
+        strncpy(_ozayn_syssec_info.firewall_name, "nftables", OZAYN_MAX_SECURITY_NAME - 1);
+        return;
+    }
+
+    /* Check firewalld */
+    if (_ozayn_check_firewalld()) {
+        _ozayn_syssec_info.firewall_state = OZAYN_SECURITY_ENABLED;
+        _ozayn_syssec_info.firewall_state_available = 1;
+        strncpy(_ozayn_syssec_info.firewall_name, "firewalld", OZAYN_MAX_SECURITY_NAME - 1);
+        return;
+    }
+
+    /* Check ufw */
+    if (_ozayn_check_ufw()) {
+        _ozayn_syssec_info.firewall_state = OZAYN_SECURITY_ENABLED;
+        _ozayn_syssec_info.firewall_state_available = 1;
+        strncpy(_ozayn_syssec_info.firewall_name, "ufw", OZAYN_MAX_SECURITY_NAME - 1);
+        return;
+    }
+
+    /* No firewall detected — report UNKNOWN, not DISABLED */
+    _ozayn_syssec_info.firewall_state = OZAYN_SECURITY_UNKNOWN;
+    _ozayn_syssec_info.firewall_state_available = 1;
+    strncpy(_ozayn_syssec_info.firewall_name, "none detected", OZAYN_MAX_SECURITY_NAME - 1);
+}
+
+ozayn_result_t ozayn_sys_security_init(void) {
+    if (_ozayn_syssec_initialized) return OZAYN_OK;
+
+    memset(&_ozayn_syssec_info, 0, sizeof(OzaynSecurityInfo));
+    _ozayn_detect_firewall();
+    _ozayn_syssec_initialized = 1;
+
+    LOG_INFO("SYSSEC", "Security state initialized (firewall=%s)",
+             ozayn_sys_security_state_name(_ozayn_syssec_info.firewall_state));
+    return OZAYN_OK;
+}
+
+void ozayn_sys_security_shutdown(void) {
+    _ozayn_syssec_initialized = 0;
+    memset(&_ozayn_syssec_info, 0, sizeof(OzaynSecurityInfo));
+}
+
+int ozayn_sys_security_is_available(void) {
+    return _ozayn_syssec_initialized;
+}
+
+ozayn_result_t ozayn_sys_security_get_info(OzaynSecurityInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynSecurityInfo));
+
+    if (!_ozayn_syssec_initialized) return OZAYN_ERR;
+
+    *info = _ozayn_syssec_info;
+    return OZAYN_OK;
+}
+
+OzaynSecurityState ozayn_sys_security_get_firewall_state(void) {
+    if (!_ozayn_syssec_initialized) return OZAYN_SECURITY_UNKNOWN;
+    return _ozayn_syssec_info.firewall_state;
+}
+
+const char *ozayn_sys_security_state_name(OzaynSecurityState state) {
+    switch (state) {
+        case OZAYN_SECURITY_UNKNOWN:    return "Unknown";
+        case OZAYN_SECURITY_ENABLED:    return "Enabled";
+        case OZAYN_SECURITY_DISABLED:   return "Disabled";
+        case OZAYN_SECURITY_UNAVAILABLE: return "Unavailable";
+        default:                        return "Unknown";
+    }
+}
+
+/* ================================================================
  * Platform Detection & Initialization
  * ================================================================ */
 

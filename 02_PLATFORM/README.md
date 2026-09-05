@@ -2835,6 +2835,94 @@ Tests verify:
 - Valid state/type enum ranges
 - Query after shutdown
 
+## Step 33 — System Security & Firewall State Abstraction
+
+Cross-platform read-only system security and firewall state detection.
+
+Diagnostic only — no security modification, no rule changes, no control.
+
+### Supported Detection
+
+| Security Layer | Linux Source | Notes |
+|----------------|-------------|-------|
+| iptables | `/proc/net/ip_tables_names` | Checks for loaded tables |
+| nftables | `/proc/net/nf_tables` | Checks for nftables presence |
+| firewalld | `/run/firewalld`, `/etc/firewalld` | Checks for firewalld directories |
+| ufw | `/etc/ufw/ufw.conf` | Checks ENABLED=yes setting |
+| Antivirus | N/A | Not reliably detectable on Linux |
+
+### Public API
+
+```c
+ozayn_result_t ozayn_sys_security_init(void);
+void           ozayn_sys_security_shutdown(void);
+int            ozayn_sys_security_is_available(void);
+ozayn_result_t ozayn_sys_security_get_info(OzaynSecurityInfo *info);
+OzaynSecurityState ozayn_sys_security_get_firewall_state(void);
+const char    *ozayn_sys_security_state_name(OzaynSecurityState state);
+```
+
+### Architecture
+
+```
+OZAYN
+  ↓
+Common Security API
+  ↓
+Linux / Windows / macOS
+  ↓
+Operating System
+```
+
+### Security Model
+
+- Read-only — no firewall enable/disable, no rule changes
+- No security policy modification
+- No credential or token access
+- No persistent security history
+- No network transmission of security state
+
+### State Values
+
+| State | Meaning |
+|-------|---------|
+| UNKNOWN | Firewall state cannot be determined |
+| ENABLED | Firewall appears to be active |
+| DISABLED | Firewall is confirmed disabled |
+| UNAVAILABLE | No firewall framework detected |
+
+### Platform Availability
+
+| Platform | Status |
+|----------|--------|
+| Linux | Fully implemented (iptables, nftables, firewalld, ufw detection) |
+| macOS | Stub (requires pf/ALF APIs) |
+| Windows | Stub (requires Windows Firewall API) |
+
+### Limitations
+
+- No antivirus detection on Linux (unreliable)
+- UNKNOWN does not mean DISABLED
+- Container/restricted environments may report UNKNOWN
+- No real-time monitoring, only point-in-time detection
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Info query with valid struct
+- Firewall state is valid enum value
+- Firewall name is non-empty when available
+- State name mapping (all values + invalid)
+- Null-termination of string buffers
+- Consistency of availability flags
+- Query after shutdown
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2869,4 +2957,5 @@ Tests verify:
 - [x] Step 30: System Resource Monitoring Abstraction
 - [x] Step 31: Network Configuration & Routing Information Abstraction
 - [x] Step 32: System Service & Background Process Information Abstraction
-- [ ] Steps 33-35: (future)
+- [x] Step 33: System Security & Firewall State Abstraction
+- [ ] Steps 34-35: (future)
