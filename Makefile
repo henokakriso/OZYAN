@@ -38,6 +38,11 @@ endif
 SRCS    = $(wildcard src/*.c) $(wildcard src/core/*.c) $(PLATFORM_SRC)
 OBJS    = $(patsubst src/%.c, $(BUILD)/%.o, $(SRCS))
 
+# Platform capabilities integration layer
+CAP_SRC = 02_PLATFORM/common/platform_capabilities.c
+CAP_OBJ = $(BUILD)/02_PLATFORM/common/platform_capabilities.o
+OBJS    += $(CAP_OBJ)
+
 PLUGIN_DIR  = plugins
 PLUGIN_SRCS = $(wildcard $(PLUGIN_DIR)/*.c)
 PLUGIN_SO   = $(patsubst $(PLUGIN_DIR)/%.c, $(PLUGIN_DIR)/%.so, $(PLUGIN_SRCS))
@@ -56,6 +61,10 @@ TEST_OBJS   = $(filter-out build/main.o, $(OBJS))
 all: $(BUILD)/$(TARGET) plugins tools
 
 $(BUILD)/%.o: src/%.c | $(BUILD)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/02_PLATFORM/common/%.o: 02_PLATFORM/common/%.c | $(BUILD)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 

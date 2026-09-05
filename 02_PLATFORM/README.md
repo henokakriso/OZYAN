@@ -3002,7 +3002,121 @@ Tests verify:
 - Invalid input handling (NULL, negative, out-of-range)
 - Query after shutdown
 
+## Step 35 — Platform Capability Registry & Final Integration
+
+Unified integration layer exposing all Section 02 platform subsystems through a single, queryable registry. This is the final step of Section 02.
+
+### Architecture
+
+```
+                OZAYN
+                  │
+                  ▼
+       ┌─────────────────────┐
+       │ PLATFORM CAPABILITY │
+       │      REGISTRY       │
+       └──────────┬──────────┘
+                  │
+        ┌─────────┼─────────┐
+        ▼         ▼         ▼
+      Linux    Windows    macOS
+        │         │         │
+        └──── Native OS ────┘
+```
+
+### Capability Enumeration
+
+33 capabilities mapped to Section 02 subsystems:
+
+| Capability | Step | Description |
+|------------|------|-------------|
+| PLATFORM | 01 | Platform detection and identification |
+| FILESYSTEM | 03 | Filesystem and system information |
+| PROCESS | 04 | Process management and lifecycle |
+| DISPLAY | 05 | Display enumeration and information |
+| WINDOW | 06 | Window management and decoration |
+| INPUT | 07 | Input device abstraction (mouse, touch) |
+| KEYBOARD | 08 | Keyboard and key event abstraction |
+| CAMERA | 09 | Camera device enumeration and access |
+| MICROPHONE | 10 | Microphone device enumeration and access |
+| AUDIO_OUTPUT | 11 | Audio output device enumeration and control |
+| NETWORK | 12 | Network interface enumeration and state |
+| POWER | 13 | Power source and battery status |
+| NOTIFICATION | 14 | Desktop notification system |
+| CLIPBOARD | 15 | Clipboard read/write abstraction |
+| ENVIRONMENT | 16 | Environment variable access |
+| TIME | 17 | System time and monotonic clock |
+| APPLICATION | 18 | Application lifecycle management |
+| PERMISSIONS | 19 | Permission queries and access control |
+| AUDIO_VOLUME | 20 | Audio volume and mute control |
+| SESSION | 21 | Session lock/unlock and idle detection |
+| BRIGHTNESS | 22 | Display brightness control |
+| APPEARANCE | 23 | Desktop theme and appearance |
+| FONT | 24 | Font enumeration and metrics |
+| SENSORS | 25 | Hardware sensor access |
+| STORAGE | 26 | Storage device enumeration |
+| PERIPHERAL | 27 | Peripheral device enumeration |
+| BLUETOOTH | 28 | Bluetooth adapter and device discovery |
+| SYSTEM_EVENT | 29 | System event monitoring |
+| RESOURCES | 30 | System resource monitoring |
+| NETWORK_CONFIG | 31 | Network configuration and routing |
+| SERVICE | 32 | System service enumeration and management |
+| SECURITY | 33 | Security state and firewall detection |
+| DIAGNOSTICS | 34 | Diagnostics and health information |
+
+### Public API
+
+```c
+int  ozayn_platform_capabilities_init(void);
+void ozayn_platform_capabilities_shutdown(void);
+int  ozayn_platform_capabilities_is_available(void);
+int  ozayn_platform_capabilities_get_count(void);
+int  ozayn_platform_capabilities_get(OzaynPlatformCapability cap, OzaynPlatformCapabilityInfo *info);
+int  ozayn_platform_capabilities_is_capability_available(OzaynPlatformCapability cap);
+const char *ozayn_platform_capability_name(OzaynPlatformCapability cap);
+const char *ozayn_platform_capability_state_name(OzaynCapabilityState state);
+```
+
+### Design Principles
+
+- **Registry, not implementation:** Calls existing Section 02 public APIs
+- **No duplication:** Does not rewrite OS detection, hardware detection, or any subsystem logic
+- **Init + probe pattern:** Calls each subsystem's init, checks is_available, then shuts down
+- **Hardware absence is valid:** A capability can be AVAILABLE while zero physical devices exist
+- **Environment safe:** Works on desktops, laptops, VMs, containers, headless systems
+- **Reentrant lifecycle:** init/shutdown/re-init cycles are safe
+
+### Files
+
+- `02_PLATFORM/common/platform_capabilities.h` — Header with enums, struct, API
+- `02_PLATFORM/common/platform_capabilities.c` — Implementation calling existing APIs
+- `02_PLATFORM/tests/test_platform_capabilities.c` — 34 tests
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic, idempotent, before init)
+- Re-init after shutdown
+- COUNT matches 33
+- All capability names are valid and non-empty
+- Invalid enum values return "unknown"
+- State name mapping (all values + invalid)
+- Get for every valid capability (validates name, description, state)
+- NULL and invalid input handling
+- is_capability_available for every capability (no crashes)
+- String null-termination validation
+- Query after shutdown returns unavailable
+- Platform, filesystem, process, time available on any working system
+
 ## Status
+
+**Section 02 — Cross-Platform System Layer: COMPLETE**
+
+Steps: 35/35
 
 - [x] Step 01: Platform Detection & Initialization
 - [x] Step 02: System Information & Hardware Identification
@@ -3038,4 +3152,4 @@ Tests verify:
 - [x] Step 32: System Service & Background Process Information Abstraction
 - [x] Step 33: System Security & Firewall State Abstraction
 - [x] Step 34: System Diagnostics & Health Information Abstraction
-- [ ] Step 35: (future)
+- [x] Step 35: Platform Capability Registry & Final Integration
