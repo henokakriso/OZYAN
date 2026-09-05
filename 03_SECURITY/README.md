@@ -236,7 +236,8 @@ This dashboard will display only non-sensitive status information. It will never
 | 06 | Encryption Architecture & Protection Boundary | COMPLETE |
 | 07 | Production Encryption Implementation | COMPLETE |
 | 08 | Key Management Foundation | COMPLETE |
-| 09 | (future) | PENDING |
+| 09 | Secure Key Storage & Platform Key Store | COMPLETE |
+| 10 | (future) | PENDING |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
