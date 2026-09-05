@@ -237,7 +237,8 @@ This dashboard will display only non-sensitive status information. It will never
 | 07 | Production Encryption Implementation | COMPLETE |
 | 08 | Key Management Foundation | COMPLETE |
 | 09 | Secure Key Storage & Platform Key Store | COMPLETE |
-| 10 | (future) | PENDING |
+| 10 | Key Lifecycle & Rotation | COMPLETE |
+| 11 | (future) | PENDING |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
