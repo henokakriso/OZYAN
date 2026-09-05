@@ -6285,6 +6285,249 @@ ozayn_result_t ozayn_network_config_get_default(OzaynNetworkConfig *config) {
 }
 
 /* ================================================================
+ * AF. System Service & Background Process Information Abstraction (Step 32)
+ * ================================================================
+ *
+ * Cross-platform read-only system service and background process discovery.
+ * Linux implementation using D-Bus to query systemd.
+ * Read-only — no service control, no start/stop, no modification.
+ */
+
+static int _ozayn_service_initialized = 0;
+static OzaynServiceInfo _ozayn_services[OZAYN_MAX_SERVICES];
+static int _ozayn_service_count = 0;
+
+/* Internal helper: map systemd ActiveState to OzaynServiceState */
+static OzaynServiceState _ozayn_systemd_state(const char *state) {
+    if (!state) return OZAYN_SERVICE_STATE_UNKNOWN;
+    if (strcmp(state, "active") == 0) return OZAYN_SERVICE_STATE_RUNNING;
+    if (strcmp(state, "inactive") == 0 || strcmp(state, "dead") == 0) return OZAYN_SERVICE_STATE_STOPPED;
+    if (strcmp(state, "activating") == 0 || strcmp(state, "reloading") == 0) return OZAYN_SERVICE_STATE_PAUSED;
+    if (strcmp(state, "failed") == 0) return OZAYN_SERVICE_STATE_OTHER;
+    if (strcmp(state, "masked") == 0) return OZAYN_SERVICE_STATE_DISABLED;
+    return OZAYN_SERVICE_STATE_OTHER;
+}
+
+/* Internal helper: determine service type from systemd unit file path */
+static OzaynServiceType _ozayn_systemd_type(const char *unit) {
+    if (!unit) return OZAYN_SERVICE_UNKNOWN;
+    if (strstr(unit, ".service")) return OZAYN_SERVICE_SYSTEM;
+    if (strstr(unit, ".socket")) return OZAYN_SERVICE_SYSTEM;
+    if (strstr(unit, ".timer")) return OZAYN_SERVICE_SYSTEM;
+    if (strstr(unit, ".target")) return OZAYN_SERVICE_SYSTEM;
+    if (strstr(unit, ".mount")) return OZAYN_SERVICE_SYSTEM;
+    if (strstr(unit, ".device")) return OZAYN_SERVICE_SYSTEM;
+    return OZAYN_SERVICE_OTHER;
+}
+
+/* Internal helper: enumerate services via D-Bus systemd ListUnits */
+static void _ozayn_enumerate_services(void) {
+    _ozayn_service_count = 0;
+
+    DBusError err;
+    dbus_error_init(&err);
+
+    DBusConnection *conn = dbus_bus_get(DBUS_BUS_SYSTEM, &err);
+    if (!conn || dbus_error_is_set(&err)) {
+        dbus_error_free(&err);
+        return;
+    }
+
+    /* Call org.freedesktop.systemd1.Manager.ListUnits */
+    DBusMessage *msg = dbus_message_new_method_call(
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        "ListUnits"
+    );
+
+    if (!msg) {
+        dbus_connection_unref(conn);
+        return;
+    }
+
+    DBusMessage *reply = dbus_connection_send_with_reply_and_block(conn, msg, 5000, &err);
+    dbus_message_unref(msg);
+
+    if (!reply || dbus_error_is_set(&err)) {
+        if (reply) dbus_message_unref(reply);
+        dbus_error_free(&err);
+        dbus_connection_unref(conn);
+        return;
+    }
+
+    /* Parse the reply: array of structs (ssssssouso) */
+    DBusMessageIter iter, arr_iter;
+    dbus_message_iter_init(reply, &iter);
+
+    if (dbus_message_iter_get_arg_type(&iter) != DBUS_TYPE_ARRAY) {
+        dbus_message_unref(reply);
+        dbus_connection_unref(conn);
+        return;
+    }
+
+    dbus_message_iter_recurse(&iter, &arr_iter);
+
+    while (dbus_message_iter_get_arg_type(&arr_iter) == DBUS_TYPE_STRUCT &&
+           _ozayn_service_count < OZAYN_MAX_SERVICES) {
+
+        DBusMessageIter struct_iter;
+        dbus_message_iter_recurse(&arr_iter, &struct_iter);
+
+        /* Read fields: id, description, load_state, active_state, sub_state, following, pid, active_enter_timestamp, unit_file_state */
+        const char *unit_id = NULL;
+        const char *description = NULL;
+        const char *load_state = NULL;
+        const char *active_state = NULL;
+        const char *sub_state = NULL;
+
+        /* Unit ID (string) */
+        if (dbus_message_iter_get_arg_type(&struct_iter) == DBUS_TYPE_STRING) {
+            dbus_message_iter_get_basic(&struct_iter, &unit_id);
+        }
+        dbus_message_iter_next(&struct_iter);
+
+        /* Description (string) */
+        if (dbus_message_iter_get_arg_type(&struct_iter) == DBUS_TYPE_STRING) {
+            dbus_message_iter_get_basic(&struct_iter, &description);
+        }
+        dbus_message_iter_next(&struct_iter);
+
+        /* Load state (string) */
+        if (dbus_message_iter_get_arg_type(&struct_iter) == DBUS_TYPE_STRING) {
+            dbus_message_iter_get_basic(&struct_iter, &load_state);
+        }
+        dbus_message_iter_next(&struct_iter);
+
+        /* Active state (string) */
+        if (dbus_message_iter_get_arg_type(&struct_iter) == DBUS_TYPE_STRING) {
+            dbus_message_iter_get_basic(&struct_iter, &active_state);
+        }
+        dbus_message_iter_next(&struct_iter);
+
+        /* Sub state (string) */
+        if (dbus_message_iter_get_arg_type(&struct_iter) == DBUS_TYPE_STRING) {
+            dbus_message_iter_get_basic(&struct_iter, &sub_state);
+        }
+        /* Skip remaining fields */
+        while (dbus_message_iter_get_arg_type(&struct_iter) != DBUS_TYPE_INVALID) {
+            dbus_message_iter_next(&struct_iter);
+        }
+
+        /* Fill service info */
+        if (unit_id) {
+            OzaynServiceInfo *info = &_ozayn_services[_ozayn_service_count];
+            memset(info, 0, sizeof(OzaynServiceInfo));
+            info->index = _ozayn_service_count;
+            info->available = 1;
+
+            strncpy(info->id, unit_id, OZAYN_MAX_SERVICE_ID - 1);
+            if (description) strncpy(info->description, description, OZAYN_MAX_SERVICE_DESC - 1);
+
+            /* Use unit name (strip .service suffix for display name) */
+            const char *name = unit_id;
+            size_t name_len = strlen(name);
+            if (name_len > 8 && strcmp(name + name_len - 8, ".service") == 0) {
+                size_t copy_len = name_len - 8;
+                if (copy_len >= OZAYN_MAX_SERVICE_NAME) copy_len = OZAYN_MAX_SERVICE_NAME - 1;
+                memcpy(info->name, name, copy_len);
+                info->name[copy_len] = '\0';
+            } else {
+                strncpy(info->name, unit_id, OZAYN_MAX_SERVICE_NAME - 1);
+            }
+
+            info->type = _ozayn_systemd_type(unit_id);
+            info->state = _ozayn_systemd_state(active_state);
+
+            _ozayn_service_count++;
+        }
+
+        dbus_message_iter_next(&arr_iter);
+    }
+
+    dbus_message_unref(reply);
+    dbus_connection_unref(conn);
+}
+
+ozayn_result_t ozayn_service_init(void) {
+    if (_ozayn_service_initialized) return OZAYN_OK;
+
+    memset(_ozayn_services, 0, sizeof(_ozayn_services));
+    _ozayn_service_count = 0;
+
+    _ozayn_enumerate_services();
+    _ozayn_service_initialized = 1;
+
+    LOG_INFO("SERVICE", "Service subsystem initialized (count=%d)", _ozayn_service_count);
+    return OZAYN_OK;
+}
+
+void ozayn_service_shutdown(void) {
+    _ozayn_service_initialized = 0;
+    _ozayn_service_count = 0;
+}
+
+int ozayn_service_is_available(void) {
+    return _ozayn_service_initialized && _ozayn_service_count > 0;
+}
+
+int ozayn_service_get_count(void) {
+    if (!_ozayn_service_initialized) return 0;
+    return _ozayn_service_count;
+}
+
+ozayn_result_t ozayn_service_get_info(int index, OzaynServiceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynServiceInfo));
+
+    if (!_ozayn_service_initialized) return OZAYN_ERR;
+    if (index < 0 || index >= _ozayn_service_count) return OZAYN_ERR;
+
+    *info = _ozayn_services[index];
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_service_find(const char *name, OzaynServiceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynServiceInfo));
+
+    if (!name || name[0] == '\0') return OZAYN_ERR_NULL;
+    if (!_ozayn_service_initialized) return OZAYN_ERR;
+
+    for (int i = 0; i < _ozayn_service_count; i++) {
+        if (strcmp(_ozayn_services[i].id, name) == 0 ||
+            strcmp(_ozayn_services[i].name, name) == 0) {
+            *info = _ozayn_services[i];
+            return OZAYN_OK;
+        }
+    }
+
+    return OZAYN_ERR; /* Not found */
+}
+
+const char *ozayn_sys_service_type_name(OzaynServiceType type) {
+    switch (type) {
+        case OZAYN_SERVICE_UNKNOWN: return "Unknown";
+        case OZAYN_SERVICE_SYSTEM:  return "System";
+        case OZAYN_SERVICE_USER:    return "User";
+        case OZAYN_SERVICE_OTHER:   return "Other";
+        default:                    return "Unknown";
+    }
+}
+
+const char *ozayn_sys_service_state_name(OzaynServiceState state) {
+    switch (state) {
+        case OZAYN_SERVICE_STATE_UNKNOWN:  return "Unknown";
+        case OZAYN_SERVICE_STATE_RUNNING:  return "Running";
+        case OZAYN_SERVICE_STATE_STOPPED:  return "Stopped";
+        case OZAYN_SERVICE_STATE_PAUSED:   return "Paused";
+        case OZAYN_SERVICE_STATE_DISABLED: return "Disabled";
+        case OZAYN_SERVICE_STATE_OTHER:    return "Other";
+        default:                           return "Unknown";
+    }
+}
+
+/* ================================================================
  * Platform Detection & Initialization
  * ================================================================ */
 

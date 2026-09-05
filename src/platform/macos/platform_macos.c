@@ -2652,6 +2652,69 @@ ozayn_result_t ozayn_network_config_get_default(OzaynNetworkConfig *config) {
 }
 
 /* ================================================================
+ * AF. System Service & Background Process Information Abstraction (Step 32)
+ * ================================================================
+ * Stub: macOS service discovery requires launchd API.
+ */
+
+static int _ozayn_service_initialized = 0;
+
+ozayn_result_t ozayn_service_init(void) {
+    if (_ozayn_service_initialized) return OZAYN_OK;
+    _ozayn_service_initialized = 1;
+    return OZAYN_OK;
+}
+
+void ozayn_service_shutdown(void) {
+    _ozayn_service_initialized = 0;
+}
+
+int ozayn_service_is_available(void) {
+    return 0; /* Stub */
+}
+
+int ozayn_service_get_count(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_service_get_info(int index, OzaynServiceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynServiceInfo));
+    if (!_ozayn_service_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+ozayn_result_t ozayn_service_find(const char *name, OzaynServiceInfo *info) {
+    if (!info) return OZAYN_ERR_NULL;
+    memset(info, 0, sizeof(OzaynServiceInfo));
+    if (!name || name[0] == '\0') return OZAYN_ERR_NULL;
+    if (!_ozayn_service_initialized) return OZAYN_ERR;
+    return OZAYN_ERR; /* Stub */
+}
+
+const char *ozayn_sys_service_type_name(OzaynServiceType type) {
+    switch (type) {
+        case OZAYN_SERVICE_UNKNOWN: return "Unknown";
+        case OZAYN_SERVICE_SYSTEM:  return "System";
+        case OZAYN_SERVICE_USER:    return "User";
+        case OZAYN_SERVICE_OTHER:   return "Other";
+        default:                    return "Unknown";
+    }
+}
+
+const char *ozayn_sys_service_state_name(OzaynServiceState state) {
+    switch (state) {
+        case OZAYN_SERVICE_STATE_UNKNOWN:  return "Unknown";
+        case OZAYN_SERVICE_STATE_RUNNING:  return "Running";
+        case OZAYN_SERVICE_STATE_STOPPED:  return "Stopped";
+        case OZAYN_SERVICE_STATE_PAUSED:   return "Paused";
+        case OZAYN_SERVICE_STATE_DISABLED: return "Disabled";
+        case OZAYN_SERVICE_STATE_OTHER:    return "Other";
+        default:                           return "Unknown";
+    }
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 

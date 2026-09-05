@@ -2750,6 +2750,91 @@ Tests verify:
 - Default configuration retrieval
 - Query after shutdown
 
+## Step 32 — System Service & Background Process Information Abstraction
+
+Cross-platform read-only system service and background process discovery.
+
+Extends Process Management (Step 04) with service-specific metadata.
+
+### Supported Information
+
+| Data | Description | Linux Source |
+|------|-------------|-------------|
+| Service ID | Unit identifier | systemd D-Bus `ListUnits` |
+| Service Name | Display name (stripped suffix) | systemd unit ID |
+| Description | Service description | systemd D-Bus |
+| Service Type | System/User/Other | Derived from unit file extension |
+| Service State | Running/Stopped/Paused/Disabled/Other | systemd `ActiveState` |
+
+### Public API
+
+```c
+ozayn_result_t ozayn_service_init(void);
+void           ozayn_service_shutdown(void);
+int            ozayn_service_is_available(void);
+int            ozayn_service_get_count(void);
+ozayn_result_t ozayn_service_get_info(int index, OzaynServiceInfo *info);
+ozayn_result_t ozayn_service_find(const char *name, OzaynServiceInfo *info);
+const char    *ozayn_service_type_name(OzaynServiceType type);
+const char    *ozayn_service_state_name(OzaynServiceState state);
+```
+
+### Architecture
+
+```
+OZAYN
+  ↓
+Common Service API
+  ↓
+Linux / Windows / macOS
+  ↓
+Operating System
+```
+
+### Security Model
+
+- Read-only — no service start/stop/restart
+- No service installation or removal
+- No service configuration modification
+- No privilege escalation
+- No credential or secret access
+- No persistent service history
+
+### Platform Availability
+
+| Platform | Status |
+|----------|--------|
+| Linux | Fully implemented (D-Bus systemd query) |
+| macOS | Stub (requires launchd API) |
+| Windows | Stub (requires Service Control Manager API) |
+
+### Limitations
+
+- Requires systemd on Linux for full service enumeration
+- Non-systemd Linux systems return 0 services (environmental limitation)
+- Service state mapping is approximate (some states map to OTHER)
+- No service control capabilities
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Count queries (before/after init)
+- Valid index retrieval and full enumeration
+- Invalid input handling (NULL, negative, out-of-range)
+- Service lookup by ID/name
+- Empty/NULL lookup handling
+- Type name mapping (all values + invalid)
+- State name mapping (all values + invalid)
+- Null-termination of all string buffers
+- Valid state/type enum ranges
+- Query after shutdown
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2783,4 +2868,5 @@ Tests verify:
 - [x] Step 29: System Event & Hardware Change Notification Abstraction
 - [x] Step 30: System Resource Monitoring Abstraction
 - [x] Step 31: Network Configuration & Routing Information Abstraction
-- [ ] Steps 32-35: (future)
+- [x] Step 32: System Service & Background Process Information Abstraction
+- [ ] Steps 33-35: (future)

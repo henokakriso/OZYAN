@@ -47,6 +47,7 @@
  *   AC. System Event & Hardware Change Notification Abstraction (Step 29)
  *   AD. System Resource Monitoring Abstraction (Step 30)
  *   AE. Network Configuration & Routing Information Abstraction (Step 31)
+ *   AF. System Service & Background Process Information Abstraction (Step 32)
  */
 
 /* ================================================================
@@ -1692,6 +1693,72 @@ int  ozayn_network_config_is_available(void);
 int  ozayn_network_config_get_count(void);
 ozayn_result_t ozayn_network_config_get(int index, OzaynNetworkConfig *config);
 ozayn_result_t ozayn_network_config_get_default(OzaynNetworkConfig *config);
+
+/* ================================================================
+ * AF. System Service & Background Process Information Abstraction (Step 32)
+ * ================================================================
+ *
+ * Cross-platform read-only system service and background process discovery.
+ * Extends Process Management (Step 04) with service-specific metadata.
+ * No service control, no start/stop, no installation, no modification.
+ */
+
+/* ---- Service Types ---- */
+
+typedef enum {
+    OZAYN_SERVICE_UNKNOWN = 0,
+    OZAYN_SERVICE_SYSTEM,
+    OZAYN_SERVICE_USER,
+    OZAYN_SERVICE_OTHER
+} OzaynServiceType;
+
+/* ---- Service States ---- */
+
+typedef enum {
+    OZAYN_SERVICE_STATE_UNKNOWN = 0,
+    OZAYN_SERVICE_STATE_RUNNING,
+    OZAYN_SERVICE_STATE_STOPPED,
+    OZAYN_SERVICE_STATE_PAUSED,
+    OZAYN_SERVICE_STATE_DISABLED,
+    OZAYN_SERVICE_STATE_OTHER
+} OzaynServiceState;
+
+/* ---- Service Information ---- */
+
+#define OZAYN_MAX_SERVICE_ID 256
+#define OZAYN_MAX_SERVICE_NAME 256
+#define OZAYN_MAX_SERVICE_DESC 512
+#define OZAYN_MAX_SERVICES 256
+
+typedef struct {
+    int index;
+
+    OzaynServiceType type;
+    OzaynServiceState state;
+
+    char id[OZAYN_MAX_SERVICE_ID];
+    char name[OZAYN_MAX_SERVICE_NAME];
+    char description[OZAYN_MAX_SERVICE_DESC];
+
+    int available;
+} OzaynServiceInfo;
+
+/* ---- Service Lifecycle ---- */
+
+ozayn_result_t ozayn_service_init(void);
+void           ozayn_service_shutdown(void);
+
+/* ---- Service Queries ---- */
+
+int  ozayn_service_is_available(void);
+int  ozayn_service_get_count(void);
+ozayn_result_t ozayn_service_get_info(int index, OzaynServiceInfo *info);
+ozayn_result_t ozayn_service_find(const char *name, OzaynServiceInfo *info);
+
+/* ---- Service Type/State Names ---- */
+
+const char *ozayn_sys_service_type_name(OzaynServiceType type);
+const char *ozayn_sys_service_state_name(OzaynServiceState state);
 
 /* ================================================================
  * Platform Lifecycle
