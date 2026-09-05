@@ -88,6 +88,7 @@ extern int run_storage_provider_tests(void);
 extern int run_storage_provider_local_tests(void);
 extern int run_protection_provider_tests(void);
 extern int run_protection_provider_sodium_tests(void);
+extern int run_key_management_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -193,6 +194,7 @@ int main(void) {
     suite_fail = run_storage_provider_local_tests(); suite_pass = 45 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_protection_provider_tests();    suite_pass = 58 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_protection_provider_sodium_tests(); suite_pass = 42 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_key_management_tests();              suite_pass = 40 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

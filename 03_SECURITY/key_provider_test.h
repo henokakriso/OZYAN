@@ -4,15 +4,19 @@
 #include "key_provider.h"
 
 /*
- * key_provider_test.h — Test-Only Key Provider (Section 03, Step 07).
+ * key_provider_test.h — Test-Only Key Provider (Section 03, Step 08).
  *
- * A controlled key provider for testing the protection architecture.
- * Provides a fixed key for deterministic testing.
+ * Provides fixed test keys with full key management support.
  * DO NOT use in production.
  */
 
-/* Create a test key provider with a fixed key */
+#define OZAYN_KEY_TEST_MAX_KEYS  8
+
+/* Create a test key provider with a single fixed key */
 void ozayn_key_test_create(ozayn_key_provider_t *provider,
                             const uint8_t *key, size_t key_len);
+
+/* Create a test key provider with multiple managed keys */
+void ozayn_key_test_create_managed(ozayn_key_provider_t *provider);
 
 #endif
