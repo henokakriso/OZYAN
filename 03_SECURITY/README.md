@@ -231,7 +231,8 @@ This dashboard will display only non-sensitive status information. It will never
 | 01 | Security Layer Foundation | COMPLETE |
 | 02 | Data Classification & Storage Boundary | COMPLETE |
 | 03 | Secure Data Object & Validation Contract | COMPLETE |
-| 04 | (future) | PENDING |
+| 04 | Storage Abstraction & Provider Contract | COMPLETE |
+| 05 | (future) | PENDING |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
