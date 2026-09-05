@@ -8,6 +8,9 @@ control_room/lib/hand_landmarker.task
 # Private project files — NEVER push these
 OZAYN.md
 
+# Third-party dependencies (built from source)
+vendor/
+
 # Node
 node_modules/
 package-lock.json
