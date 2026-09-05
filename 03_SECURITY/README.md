@@ -229,7 +229,7 @@ This dashboard will display only non-sensitive status information. It will never
 | Step | Subsystem | Status |
 |------|-----------|--------|
 | 01 | Security Layer Foundation | COMPLETE |
-| 02 | (future) | PENDING |
+| 02 | Data Classification & Storage Boundary | COMPLETE |
 | 03 | (future) | PENDING |
 | ... | ... | ... |
 | 35 | (future) | PENDING |

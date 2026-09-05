@@ -43,6 +43,11 @@ CAP_SRC = 02_PLATFORM/common/platform_capabilities.c
 CAP_OBJ = $(BUILD)/02_PLATFORM/common/platform_capabilities.o
 OBJS    += $(CAP_OBJ)
 
+# Secure Data Layer (Section 03)
+SEC_SRC = 03_SECURITY/data_classification.c 03_SECURITY/secure_data.c
+SEC_OBJ = $(BUILD)/03_SECURITY/data_classification.o $(BUILD)/03_SECURITY/secure_data.o
+OBJS    += $(SEC_OBJ)
+
 PLUGIN_DIR  = plugins
 PLUGIN_SRCS = $(wildcard $(PLUGIN_DIR)/*.c)
 PLUGIN_SO   = $(patsubst $(PLUGIN_DIR)/%.c, $(PLUGIN_DIR)/%.so, $(PLUGIN_SRCS))
@@ -53,7 +58,7 @@ TOOLS_BIN   = $(patsubst $(TOOLS_DIR)/%.c, $(BUILD)/%, $(TOOLS_SRCS))
 
 # Test sources
 TEST_MAIN   = tests/test_main.c
-TEST_SRCS   = $(wildcard tests/unit/*.c) $(wildcard tests/integration/*.c) $(wildcard tests/system/*.c) $(wildcard tests/failure/*.c) $(wildcard tests/regression/*.c) $(wildcard 02_PLATFORM/tests/*.c)
+TEST_SRCS   = $(wildcard tests/unit/*.c) $(wildcard tests/integration/*.c) $(wildcard tests/system/*.c) $(wildcard tests/failure/*.c) $(wildcard tests/regression/*.c) $(wildcard 02_PLATFORM/tests/*.c) $(wildcard 03_SECURITY/tests/*.c)
 TEST_ALL_SRCS = $(TEST_MAIN) $(TEST_SRCS)
 TEST_BIN    = $(BUILD)/ozayn_test
 TEST_OBJS   = $(filter-out build/main.o, $(OBJS))
@@ -65,6 +70,10 @@ $(BUILD)/%.o: src/%.c | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/02_PLATFORM/common/%.o: 02_PLATFORM/common/%.c | $(BUILD)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/03_SECURITY/%.o: 03_SECURITY/%.c | $(BUILD)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
