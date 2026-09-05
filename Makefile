@@ -45,7 +45,7 @@ OBJS    += $(CAP_OBJ)
 
 # Secure Data Layer (Section 03)
 SEC_SRC = 03_SECURITY/data_classification.c 03_SECURITY/secure_data.c 03_SECURITY/secure_data_object.c 03_SECURITY/storage_provider.c 03_SECURITY/storage_provider_mem.c 03_SECURITY/storage_provider_local.c
-SEC_OBJ = $(BUILD)/03_SECURITY/data_classification.o $(BUILD)/03_SECURITY/secure_data.o $(BUILD)/03_SECURITY/secure_data_object.o $(BUILD)/03_SECURITY/storage_provider.o $(BUILD)/03_SECURITY/storage_provider_mem.o $(BUILD)/03_SECURITY/storage_provider_local.o
+SEC_OBJ = $(BUILD)/03_SECURITY/data_classification.o $(BUILD)/03_SECURITY/secure_data.o $(BUILD)/03_SECURITY/secure_data_object.o $(BUILD)/03_SECURITY/storage_provider.o $(BUILD)/03_SECURITY/storage_provider_mem.o $(BUILD)/03_SECURITY/storage_provider_local.o $(BUILD)/03_SECURITY/protection_provider.o $(BUILD)/03_SECURITY/protection_provider_mock.o
 OBJS    += $(SEC_OBJ)
 
 PLUGIN_DIR  = plugins

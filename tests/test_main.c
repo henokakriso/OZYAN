@@ -86,6 +86,7 @@ extern int run_data_classification_tests(void);
 extern int run_secure_data_object_tests(void);
 extern int run_storage_provider_tests(void);
 extern int run_storage_provider_local_tests(void);
+extern int run_protection_provider_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -189,6 +190,7 @@ int main(void) {
     suite_fail = run_secure_data_object_tests();   suite_pass = 54 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_storage_provider_tests();      suite_pass = 36 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_storage_provider_local_tests(); suite_pass = 45 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_protection_provider_tests();    suite_pass = 58 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

@@ -233,7 +233,8 @@ This dashboard will display only non-sensitive status information. It will never
 | 03 | Secure Data Object & Validation Contract | COMPLETE |
 | 04 | Storage Abstraction & Provider Contract | COMPLETE |
 | 05 | Local Persistent Storage Provider | COMPLETE |
-| 06 | (future) | PENDING |
+| 06 | Encryption Architecture & Protection Boundary | COMPLETE |
+| 07 | (future) | PENDING |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
