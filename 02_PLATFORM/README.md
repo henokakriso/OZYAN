@@ -2923,6 +2923,85 @@ Tests verify:
 - Consistency of availability flags
 - Query after shutdown
 
+## Step 34 — System Diagnostics & Health Information Abstraction
+
+Unified read-only diagnostic layer combining existing Section 02 capabilities into a single health view.
+
+Calls existing platform APIs rather than duplicating platform-specific implementations.
+
+### Diagnostic Architecture
+
+```
+OZAYN
+  ↓
+Common Diagnostics API
+  ↓
+Existing Platform Abstractions (Steps 01-33)
+  ↓
+Operating System
+```
+
+### Diagnostic States
+
+| State | Meaning |
+|-------|---------|
+| UNKNOWN | OS does not provide reliable information |
+| OK | Component available and functioning normally |
+| WARNING | Component exists but has limitation or partial availability |
+| UNAVAILABLE | Capability not available in current environment |
+| ERROR | Abstraction itself failed unexpectedly |
+
+### Components Checked
+
+All 30 Section 02 components: Platform, Filesystem, Process, Display, Input, Camera, Microphone, Audio Output, Network, Power, Notification, Clipboard, Environment, Time, Application, Permissions, Audio Volume, Session, Brightness, Appearance, Font, Sensors, Storage, Peripheral, Bluetooth, System Event, Resources, Network Config, Service, Security.
+
+### Public API
+
+```c
+ozayn_result_t ozayn_sys_diag_init(void);
+void           ozayn_sys_diag_shutdown(void);
+int            ozayn_sys_diag_is_available(void);
+int            ozayn_sys_diag_run(void);
+int            ozayn_sys_diag_get_count(void);
+ozayn_result_t ozayn_sys_diag_get_result(int index, OzaynDiagnosticResult *result);
+ozayn_result_t ozayn_sys_diag_get_component(OzaynDiagnosticComponent component, OzaynDiagnosticResult *result);
+const char    *ozayn_sys_diag_state_name(OzaynDiagnosticState state);
+const char    *ozayn_sys_diag_component_name(OzaynDiagnosticComponent component);
+```
+
+### Security Model
+
+- Read-only — no system modification
+- Calls existing safe platform APIs
+- No background monitoring or continuous polling
+- No telemetry, no history, no persistence
+- Hardware absence is a valid environmental condition
+
+### Limitations
+
+- Diagnostic depth is limited to availability checks
+- Does not perform stress testing or performance benchmarks
+- Does not detect software corruption or configuration errors
+- Hardware absence is not an error
+
+### Testing
+
+```bash
+make test
+```
+
+Tests verify:
+- Initialization and shutdown (basic + idempotent)
+- Availability detection (before/after init)
+- Run produces results with count > 0
+- Result enumeration and validation
+- Component lookup by enum
+- State name mapping (all values + invalid)
+- Component name mapping (all values + invalid)
+- Null-termination of string buffers
+- Invalid input handling (NULL, negative, out-of-range)
+- Query after shutdown
+
 ## Status
 
 - [x] Step 01: Platform Detection & Initialization
@@ -2958,4 +3037,5 @@ Tests verify:
 - [x] Step 31: Network Configuration & Routing Information Abstraction
 - [x] Step 32: System Service & Background Process Information Abstraction
 - [x] Step 33: System Security & Firewall State Abstraction
-- [ ] Steps 34-35: (future)
+- [x] Step 34: System Diagnostics & Health Information Abstraction
+- [ ] Step 35: (future)

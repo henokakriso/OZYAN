@@ -49,6 +49,7 @@
  *   AE. Network Configuration & Routing Information Abstraction (Step 31)
  *   AF. System Service & Background Process Information Abstraction (Step 32)
  *   AG. System Security & Firewall State Abstraction (Step 33)
+ *   AH. System Diagnostics & Health Information Abstraction (Step 34)
  */
 
 /* ================================================================
@@ -1808,6 +1809,93 @@ OzaynSecurityState ozayn_sys_security_get_firewall_state(void);
 /* ---- Security State Names ---- */
 
 const char *ozayn_sys_security_state_name(OzaynSecurityState state);
+
+/* ================================================================
+ * AH. System Diagnostics & Health Information Abstraction (Step 34)
+ * ================================================================
+ *
+ * Unified read-only diagnostic layer combining existing Section 02
+ * capabilities into a single health view. Calls existing APIs rather
+ * than duplicating platform-specific implementations.
+ */
+
+/* ---- Diagnostic States ---- */
+
+typedef enum {
+    OZAYN_DIAGNOSTIC_UNKNOWN = 0,
+    OZAYN_DIAGNOSTIC_OK,
+    OZAYN_DIAGNOSTIC_WARNING,
+    OZAYN_DIAGNOSTIC_UNAVAILABLE,
+    OZAYN_DIAGNOSTIC_ERROR
+} OzaynDiagnosticState;
+
+/* ---- Diagnostic Components ---- */
+
+typedef enum {
+    OZAYN_DIAGNOSTIC_COMPONENT_PLATFORM = 0,
+    OZAYN_DIAGNOSTIC_COMPONENT_FILESYSTEM,
+    OZAYN_DIAGNOSTIC_COMPONENT_PROCESS,
+    OZAYN_DIAGNOSTIC_COMPONENT_DISPLAY,
+    OZAYN_DIAGNOSTIC_COMPONENT_INPUT,
+    OZAYN_DIAGNOSTIC_COMPONENT_CAMERA,
+    OZAYN_DIAGNOSTIC_COMPONENT_MICROPHONE,
+    OZAYN_DIAGNOSTIC_COMPONENT_AUDIO_OUTPUT,
+    OZAYN_DIAGNOSTIC_COMPONENT_NETWORK,
+    OZAYN_DIAGNOSTIC_COMPONENT_POWER,
+    OZAYN_DIAGNOSTIC_COMPONENT_NOTIFICATION,
+    OZAYN_DIAGNOSTIC_COMPONENT_CLIPBOARD,
+    OZAYN_DIAGNOSTIC_COMPONENT_ENVIRONMENT,
+    OZAYN_DIAGNOSTIC_COMPONENT_TIME,
+    OZAYN_DIAGNOSTIC_COMPONENT_APPLICATION,
+    OZAYN_DIAGNOSTIC_COMPONENT_PERMISSIONS,
+    OZAYN_DIAGNOSTIC_COMPONENT_AUDIO_VOLUME,
+    OZAYN_DIAGNOSTIC_COMPONENT_SESSION,
+    OZAYN_DIAGNOSTIC_COMPONENT_BRIGHTNESS,
+    OZAYN_DIAGNOSTIC_COMPONENT_APPEARANCE,
+    OZAYN_DIAGNOSTIC_COMPONENT_FONT,
+    OZAYN_DIAGNOSTIC_COMPONENT_SENSORS,
+    OZAYN_DIAGNOSTIC_COMPONENT_STORAGE,
+    OZAYN_DIAGNOSTIC_COMPONENT_PERIPHERAL,
+    OZAYN_DIAGNOSTIC_COMPONENT_BLUETOOTH,
+    OZAYN_DIAGNOSTIC_COMPONENT_SYSTEM_EVENT,
+    OZAYN_DIAGNOSTIC_COMPONENT_RESOURCES,
+    OZAYN_DIAGNOSTIC_COMPONENT_NETWORK_CONFIG,
+    OZAYN_DIAGNOSTIC_COMPONENT_SERVICE,
+    OZAYN_DIAGNOSTIC_COMPONENT_SECURITY,
+    OZAYN_DIAGNOSTIC_COMPONENT_COUNT
+} OzaynDiagnosticComponent;
+
+/* ---- Diagnostic Result ---- */
+
+#define OZAYN_MAX_DIAG_NAME 128
+#define OZAYN_MAX_DIAG_MSG 512
+#define OZAYN_MAX_DIAG_RESULTS 64
+
+typedef struct {
+    OzaynDiagnosticComponent component;
+    OzaynDiagnosticState state;
+    char name[OZAYN_MAX_DIAG_NAME];
+    char message[OZAYN_MAX_DIAG_MSG];
+    int available;
+} OzaynDiagnosticResult;
+
+/* ---- Diagnostics Lifecycle ---- */
+
+ozayn_result_t ozayn_sys_diag_init(void);
+void           ozayn_sys_diag_shutdown(void);
+
+/* ---- Diagnostics Queries ---- */
+
+int  ozayn_sys_diag_is_available(void);
+int  ozayn_sys_diag_run(void);
+int  ozayn_sys_diag_get_count(void);
+ozayn_result_t ozayn_sys_diag_get_result(int index, OzaynDiagnosticResult *result);
+ozayn_result_t ozayn_sys_diag_get_component(OzaynDiagnosticComponent component, OzaynDiagnosticResult *result);
+
+/* ---- Diagnostics Names ---- */
+
+const char *ozayn_sys_diag_state_name(OzaynDiagnosticState state);
+const char *ozayn_sys_diag_component_name(OzaynDiagnosticComponent component);
 
 /* ================================================================
  * Platform Lifecycle

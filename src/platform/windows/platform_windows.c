@@ -2613,6 +2613,64 @@ const char *ozayn_sys_security_state_name(OzaynSecurityState state) {
 }
 
 /* ================================================================
+ * AH. System Diagnostics & Health Information Abstraction (Step 34)
+ * ================================================================
+ * Stub: Windows diagnostics uses existing platform APIs.
+ */
+
+static int _ozayn_diag_initialized = 0;
+
+ozayn_result_t ozayn_sys_diag_init(void) {
+    if (_ozayn_diag_initialized) return OZAYN_OK;
+    _ozayn_diag_initialized = 1;
+    return OZAYN_OK;
+}
+
+void ozayn_sys_diag_shutdown(void) {
+    _ozayn_diag_initialized = 0;
+}
+
+int ozayn_sys_diag_is_available(void) {
+    return 0; /* Stub */
+}
+
+int ozayn_sys_diag_run(void) {
+    return 0; /* Stub */
+}
+
+int ozayn_sys_diag_get_count(void) {
+    return 0; /* Stub */
+}
+
+ozayn_result_t ozayn_sys_diag_get_result(int index, OzaynDiagnosticResult *result) {
+    if (!result) return OZAYN_ERR_NULL;
+    memset(result, 0, sizeof(OzaynDiagnosticResult));
+    return OZAYN_ERR; /* Stub */
+}
+
+ozayn_result_t ozayn_sys_diag_get_component(OzaynDiagnosticComponent component, OzaynDiagnosticResult *result) {
+    if (!result) return OZAYN_ERR_NULL;
+    memset(result, 0, sizeof(OzaynDiagnosticResult));
+    return OZAYN_ERR; /* Stub */
+}
+
+const char *ozayn_sys_diag_state_name(OzaynDiagnosticState state) {
+    switch (state) {
+        case OZAYN_DIAGNOSTIC_UNKNOWN:     return "Unknown";
+        case OZAYN_DIAGNOSTIC_OK:          return "OK";
+        case OZAYN_DIAGNOSTIC_WARNING:     return "Warning";
+        case OZAYN_DIAGNOSTIC_UNAVAILABLE: return "Unavailable";
+        case OZAYN_DIAGNOSTIC_ERROR:       return "Error";
+        default:                           return "Unknown";
+    }
+}
+
+const char *ozayn_sys_diag_component_name(OzaynDiagnosticComponent component) {
+    (void)component;
+    return "Unknown";
+}
+
+/* ================================================================
  * Platform Lifecycle
  * ================================================================ */
 

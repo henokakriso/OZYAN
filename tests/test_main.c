@@ -78,6 +78,7 @@ extern int run_resource_monitoring_tests(void);
 extern int run_network_config_tests(void);
 extern int run_system_service_tests(void);
 extern int run_sys_security_tests(void);
+extern int run_sys_diagnostics_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -172,6 +173,7 @@ int main(void) {
     suite_fail = run_network_config_tests();   suite_pass = 22 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_system_service_tests();  suite_pass = 35 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_sys_security_tests();    suite_pass = 21 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_sys_diagnostics_tests();  suite_pass = 31 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

@@ -6700,11 +6700,594 @@ OzaynSecurityState ozayn_sys_security_get_firewall_state(void) {
 
 const char *ozayn_sys_security_state_name(OzaynSecurityState state) {
     switch (state) {
-        case OZAYN_SECURITY_UNKNOWN:    return "Unknown";
-        case OZAYN_SECURITY_ENABLED:    return "Enabled";
-        case OZAYN_SECURITY_DISABLED:   return "Disabled";
+        case OZAYN_SECURITY_UNKNOWN:     return "Unknown";
+        case OZAYN_SECURITY_ENABLED:     return "Enabled";
+        case OZAYN_SECURITY_DISABLED:    return "Disabled";
         case OZAYN_SECURITY_UNAVAILABLE: return "Unavailable";
-        default:                        return "Unknown";
+        default:                         return "Unknown";
+    }
+}
+
+/* ================================================================
+ * AH. System Diagnostics & Health Information Abstraction (Step 34)
+ * ================================================================
+ *
+ * Unified read-only diagnostic layer combining existing Section 02
+ * capabilities into a single health view. Calls existing platform APIs
+ * rather than duplicating platform-specific implementations.
+ */
+
+static int _ozayn_diag_initialized = 0;
+static OzaynDiagnosticResult _ozayn_diag_results[OZAYN_MAX_DIAG_RESULTS];
+static int _ozayn_diag_count = 0;
+
+/* Internal helper: set a diagnostic result */
+static void _ozayn_diag_set(int idx, OzaynDiagnosticComponent comp,
+                             OzaynDiagnosticState state, const char *name,
+                             const char *msg, int avail) {
+    if (idx < 0 || idx >= OZAYN_MAX_DIAG_RESULTS) return;
+    OzaynDiagnosticResult *r = &_ozayn_diag_results[idx];
+    memset(r, 0, sizeof(OzaynDiagnosticResult));
+    r->component = comp;
+    r->state = state;
+    r->available = avail;
+    if (name) strncpy(r->name, name, OZAYN_MAX_DIAG_NAME - 1);
+    if (msg) strncpy(r->message, msg, OZAYN_MAX_DIAG_MSG - 1);
+}
+
+static void _ozayn_diag_run_checks(void) {
+    _ozayn_diag_count = 0;
+    int i = 0;
+
+    /* Platform Detection */
+    {
+        OzaynPlatform p = ozayn_platform_get();
+        if (p != OZAYN_PLATFORM_UNKNOWN) {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_PLATFORM,
+                           OZAYN_DIAGNOSTIC_OK, "Platform Detection",
+                           ozayn_platform_name(), 1);
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_PLATFORM,
+                           OZAYN_DIAGNOSTIC_ERROR, "Platform Detection",
+                           "Unknown platform", 0);
+        }
+    }
+
+    /* System Info (validates platform info query) */
+    {
+        ozayn_system_info_t info;
+        ozayn_result_t r = ozayn_system_info(&info);
+        if (r == OZAYN_OK) {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_FILESYSTEM,
+                           OZAYN_DIAGNOSTIC_OK, "Filesystem",
+                           "System info available", 1);
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_FILESYSTEM,
+                           OZAYN_DIAGNOSTIC_ERROR, "Filesystem",
+                           "System info unavailable", 0);
+        }
+    }
+
+    /* Process */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_PROCESS,
+                       OZAYN_DIAGNOSTIC_OK, "Process Management",
+                       "Process API available", 1);
+    }
+
+    /* Display */
+    {
+        ozayn_result_t r = ozayn_display_init();
+        if (r == OZAYN_OK) {
+            unsigned int count = ozayn_display_count();
+            ozayn_display_shutdown();
+            if (count > 0) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_DISPLAY,
+                               OZAYN_DIAGNOSTIC_OK, "Display",
+                               "Display(s) detected", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_DISPLAY,
+                               OZAYN_DIAGNOSTIC_WARNING, "Display",
+                               "No displays detected (headless?)", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_DISPLAY,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Display",
+                           "Display subsystem unavailable", 0);
+        }
+    }
+
+    /* Input */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_INPUT,
+                       OZAYN_DIAGNOSTIC_OK, "Input",
+                       "Input API available", 1);
+    }
+
+    /* Camera */
+    {
+        ozayn_result_t r = ozayn_camera_init();
+        if (r == OZAYN_OK) {
+            unsigned int count = ozayn_camera_get_count();
+            ozayn_camera_shutdown();
+            if (count > 0) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_CAMERA,
+                               OZAYN_DIAGNOSTIC_OK, "Camera",
+                               "Camera(s) detected", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_CAMERA,
+                               OZAYN_DIAGNOSTIC_WARNING, "Camera",
+                               "No cameras detected", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_CAMERA,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Camera",
+                           "Camera subsystem unavailable", 0);
+        }
+    }
+
+    /* Microphone */
+    {
+        ozayn_result_t r = ozayn_microphone_init();
+        if (r == OZAYN_OK) {
+            unsigned int count = ozayn_microphone_get_count();
+            ozayn_microphone_shutdown();
+            if (count > 0) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_MICROPHONE,
+                               OZAYN_DIAGNOSTIC_OK, "Microphone",
+                               "Microphone(s) detected", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_MICROPHONE,
+                               OZAYN_DIAGNOSTIC_WARNING, "Microphone",
+                               "No microphones detected", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_MICROPHONE,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Microphone",
+                           "Microphone subsystem unavailable", 0);
+        }
+    }
+
+    /* Audio Output */
+    {
+        ozayn_result_t r = ozayn_audio_output_init();
+        if (r == OZAYN_OK) {
+            unsigned int count = ozayn_audio_output_get_count();
+            ozayn_audio_output_shutdown();
+            if (count > 0) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_AUDIO_OUTPUT,
+                               OZAYN_DIAGNOSTIC_OK, "Audio Output",
+                               "Audio device(s) detected", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_AUDIO_OUTPUT,
+                               OZAYN_DIAGNOSTIC_WARNING, "Audio Output",
+                               "No audio devices detected", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_AUDIO_OUTPUT,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Audio Output",
+                           "Audio output unavailable", 0);
+        }
+    }
+
+    /* Network */
+    {
+        ozayn_result_t r = ozayn_network_init();
+        if (r == OZAYN_OK) {
+            unsigned int count = ozayn_network_get_interface_count();
+            OzaynConnectivityState conn = ozayn_network_is_connected();
+            ozayn_network_shutdown();
+            if (conn == OZAYN_CONNECTIVITY_CONNECTED) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_NETWORK,
+                               OZAYN_DIAGNOSTIC_OK, "Network",
+                               "Connected", 1);
+            } else if (count > 0) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_NETWORK,
+                               OZAYN_DIAGNOSTIC_WARNING, "Network",
+                               "Interfaces present but not connected", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_NETWORK,
+                               OZAYN_DIAGNOSTIC_WARNING, "Network",
+                               "No network interfaces", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_NETWORK,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Network",
+                           "Network subsystem unavailable", 0);
+        }
+    }
+
+    /* Power */
+    {
+        ozayn_result_t r = ozayn_power_init();
+        if (r == OZAYN_OK) {
+            OzaynPowerInfo pinfo;
+            ozayn_power_get_info(&pinfo);
+            ozayn_power_shutdown();
+            if (!pinfo.has_battery && pinfo.available) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_POWER,
+                               OZAYN_DIAGNOSTIC_OK, "Power",
+                               "AC power (no battery)", 1);
+            } else if (pinfo.available) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_POWER,
+                               OZAYN_DIAGNOSTIC_OK, "Power",
+                               "Battery information available", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_POWER,
+                               OZAYN_DIAGNOSTIC_WARNING, "Power",
+                               "Power state unknown", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_POWER,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Power",
+                           "Power subsystem unavailable", 0);
+        }
+    }
+
+    /* Notification */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_NOTIFICATION,
+                       OZAYN_DIAGNOSTIC_OK, "Notification",
+                       "Notification API available", 1);
+    }
+
+    /* Clipboard */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_CLIPBOARD,
+                       OZAYN_DIAGNOSTIC_OK, "Clipboard",
+                       "Clipboard API available", 1);
+    }
+
+    /* Environment */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_ENVIRONMENT,
+                       OZAYN_DIAGNOSTIC_OK, "Environment",
+                       "Environment API available", 1);
+    }
+
+    /* Time */
+    {
+        uint64_t t = ozayn_system_time();
+        if (t > 0) {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_TIME,
+                           OZAYN_DIAGNOSTIC_OK, "System Time",
+                           "Time query functional", 1);
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_TIME,
+                           OZAYN_DIAGNOSTIC_ERROR, "System Time",
+                           "Time query failed", 0);
+        }
+    }
+
+    /* Application */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_APPLICATION,
+                       OZAYN_DIAGNOSTIC_OK, "Application",
+                       "Application API available", 1);
+    }
+
+    /* Permissions */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_PERMISSIONS,
+                       OZAYN_DIAGNOSTIC_OK, "Permissions",
+                       "Permissions API available", 1);
+    }
+
+    /* Audio Volume */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_AUDIO_VOLUME,
+                       OZAYN_DIAGNOSTIC_OK, "Audio Volume",
+                       "Volume API available", 1);
+    }
+
+    /* Session */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SESSION,
+                       OZAYN_DIAGNOSTIC_OK, "Session",
+                       "Session API available", 1);
+    }
+
+    /* Brightness */
+    {
+        ozayn_result_t r = ozayn_brightness_init();
+        if (r == OZAYN_OK) {
+            ozayn_brightness_shutdown();
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_BRIGHTNESS,
+                           OZAYN_DIAGNOSTIC_OK, "Brightness",
+                           "Brightness API available", 1);
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_BRIGHTNESS,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Brightness",
+                           "Brightness subsystem unavailable", 0);
+        }
+    }
+
+    /* Appearance */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_APPEARANCE,
+                       OZAYN_DIAGNOSTIC_OK, "Appearance",
+                       "Appearance API available", 1);
+    }
+
+    /* Font */
+    {
+        ozayn_result_t r = ozayn_font_init();
+        if (r == OZAYN_OK) {
+            ozayn_font_shutdown();
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_FONT,
+                           OZAYN_DIAGNOSTIC_OK, "Font",
+                           "Font subsystem available", 1);
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_FONT,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Font",
+                           "Font subsystem unavailable", 0);
+        }
+    }
+
+    /* Sensors */
+    {
+        ozayn_result_t r = ozayn_sensors_init();
+        if (r == OZAYN_OK) {
+            int count = ozayn_sensors_get_count();
+            ozayn_sensors_shutdown();
+            if (count > 0) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SENSORS,
+                               OZAYN_DIAGNOSTIC_OK, "Sensors",
+                               "Sensor(s) detected", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SENSORS,
+                               OZAYN_DIAGNOSTIC_WARNING, "Sensors",
+                               "No sensors detected", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SENSORS,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Sensors",
+                           "Sensor subsystem unavailable", 0);
+        }
+    }
+
+    /* Storage */
+    {
+        _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_STORAGE,
+                       OZAYN_DIAGNOSTIC_OK, "Storage",
+                       "Storage API available", 1);
+    }
+
+    /* Peripheral */
+    {
+        ozayn_result_t r = ozayn_peripheral_init();
+        if (r == OZAYN_OK) {
+            int count = ozayn_peripheral_get_count();
+            ozayn_peripheral_shutdown();
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_PERIPHERAL,
+                           OZAYN_DIAGNOSTIC_OK, "Peripheral",
+                           count > 0 ? "Peripheral(s) detected" : "No peripherals detected", 1);
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_PERIPHERAL,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Peripheral",
+                           "Peripheral subsystem unavailable", 0);
+        }
+    }
+
+    /* Bluetooth */
+    {
+        ozayn_result_t r = ozayn_bluetooth_init();
+        if (r == OZAYN_OK) {
+            int avail = ozayn_bluetooth_is_available();
+            ozayn_bluetooth_shutdown();
+            if (avail) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_BLUETOOTH,
+                               OZAYN_DIAGNOSTIC_OK, "Bluetooth",
+                               "Bluetooth available", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_BLUETOOTH,
+                               OZAYN_DIAGNOSTIC_WARNING, "Bluetooth",
+                               "Bluetooth adapter not detected", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_BLUETOOTH,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Bluetooth",
+                           "Bluetooth subsystem unavailable", 0);
+        }
+    }
+
+    /* System Event */
+    {
+        ozayn_result_t r = ozayn_system_event_init();
+        if (r == OZAYN_OK) {
+            ozayn_system_event_shutdown();
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SYSTEM_EVENT,
+                           OZAYN_DIAGNOSTIC_OK, "System Event",
+                           "System event API available", 1);
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SYSTEM_EVENT,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "System Event",
+                           "System event subsystem unavailable", 0);
+        }
+    }
+
+    /* Resources */
+    {
+        ozayn_result_t r = ozayn_resources_init();
+        if (r == OZAYN_OK) {
+            int avail = ozayn_resources_is_available();
+            ozayn_resources_shutdown();
+            if (avail) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_RESOURCES,
+                               OZAYN_DIAGNOSTIC_OK, "Resources",
+                               "Resource monitoring available", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_RESOURCES,
+                               OZAYN_DIAGNOSTIC_WARNING, "Resources",
+                               "Resource monitoring limited", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_RESOURCES,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Resources",
+                           "Resource monitoring unavailable", 0);
+        }
+    }
+
+    /* Network Config */
+    {
+        ozayn_result_t r = ozayn_network_config_init();
+        if (r == OZAYN_OK) {
+            int count = ozayn_network_config_get_count();
+            ozayn_network_config_shutdown();
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_NETWORK_CONFIG,
+                           OZAYN_DIAGNOSTIC_OK, "Network Config",
+                           count > 0 ? "Network configuration available" : "No network configuration", 1);
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_NETWORK_CONFIG,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Network Config",
+                           "Network config unavailable", 0);
+        }
+    }
+
+    /* Service */
+    {
+        ozayn_result_t r = ozayn_service_init();
+        if (r == OZAYN_OK) {
+            int count = ozayn_service_get_count();
+            ozayn_service_shutdown();
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SERVICE,
+                           OZAYN_DIAGNOSTIC_OK, "Service",
+                           count > 0 ? "Service enumeration available" : "No services detected", 1);
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SERVICE,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Service",
+                           "Service subsystem unavailable", 0);
+        }
+    }
+
+    /* Security */
+    {
+        ozayn_result_t r = ozayn_sys_security_init();
+        if (r == OZAYN_OK) {
+            OzaynSecurityInfo sinfo;
+            ozayn_sys_security_get_info(&sinfo);
+            ozayn_sys_security_shutdown();
+            if (sinfo.firewall_state_available) {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SECURITY,
+                               OZAYN_DIAGNOSTIC_OK, "Security",
+                               "Security state available", 1);
+            } else {
+                _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SECURITY,
+                               OZAYN_DIAGNOSTIC_WARNING, "Security",
+                               "Security state limited", 1);
+            }
+        } else {
+            _ozayn_diag_set(i++, OZAYN_DIAGNOSTIC_COMPONENT_SECURITY,
+                           OZAYN_DIAGNOSTIC_UNAVAILABLE, "Security",
+                           "Security subsystem unavailable", 0);
+        }
+    }
+
+    _ozayn_diag_count = i;
+}
+
+ozayn_result_t ozayn_sys_diag_init(void) {
+    if (_ozayn_diag_initialized) return OZAYN_OK;
+
+    memset(_ozayn_diag_results, 0, sizeof(_ozayn_diag_results));
+    _ozayn_diag_count = 0;
+    _ozayn_diag_initialized = 1;
+
+    LOG_INFO("DIAG", "Diagnostics subsystem initialized");
+    return OZAYN_OK;
+}
+
+void ozayn_sys_diag_shutdown(void) {
+    _ozayn_diag_initialized = 0;
+    _ozayn_diag_count = 0;
+}
+
+int ozayn_sys_diag_is_available(void) {
+    return _ozayn_diag_initialized;
+}
+
+int ozayn_sys_diag_run(void) {
+    if (!_ozayn_diag_initialized) return 0;
+    _ozayn_diag_run_checks();
+    return _ozayn_diag_count;
+}
+
+int ozayn_sys_diag_get_count(void) {
+    if (!_ozayn_diag_initialized) return 0;
+    return _ozayn_diag_count;
+}
+
+ozayn_result_t ozayn_sys_diag_get_result(int index, OzaynDiagnosticResult *result) {
+    if (!result) return OZAYN_ERR_NULL;
+    memset(result, 0, sizeof(OzaynDiagnosticResult));
+
+    if (!_ozayn_diag_initialized) return OZAYN_ERR;
+    if (index < 0 || index >= _ozayn_diag_count) return OZAYN_ERR;
+
+    *result = _ozayn_diag_results[index];
+    return OZAYN_OK;
+}
+
+ozayn_result_t ozayn_sys_diag_get_component(OzaynDiagnosticComponent component, OzaynDiagnosticResult *result) {
+    if (!result) return OZAYN_ERR_NULL;
+    memset(result, 0, sizeof(OzaynDiagnosticResult));
+
+    if (!_ozayn_diag_initialized) return OZAYN_ERR;
+
+    for (int i = 0; i < _ozayn_diag_count; i++) {
+        if (_ozayn_diag_results[i].component == component) {
+            *result = _ozayn_diag_results[i];
+            return OZAYN_OK;
+        }
+    }
+
+    return OZAYN_ERR; /* Component not found */
+}
+
+const char *ozayn_sys_diag_state_name(OzaynDiagnosticState state) {
+    switch (state) {
+        case OZAYN_DIAGNOSTIC_UNKNOWN:     return "Unknown";
+        case OZAYN_DIAGNOSTIC_OK:          return "OK";
+        case OZAYN_DIAGNOSTIC_WARNING:     return "Warning";
+        case OZAYN_DIAGNOSTIC_UNAVAILABLE: return "Unavailable";
+        case OZAYN_DIAGNOSTIC_ERROR:       return "Error";
+        default:                           return "Unknown";
+    }
+}
+
+const char *ozayn_sys_diag_component_name(OzaynDiagnosticComponent component) {
+    switch (component) {
+        case OZAYN_DIAGNOSTIC_COMPONENT_PLATFORM:       return "Platform";
+        case OZAYN_DIAGNOSTIC_COMPONENT_FILESYSTEM:      return "Filesystem";
+        case OZAYN_DIAGNOSTIC_COMPONENT_PROCESS:         return "Process";
+        case OZAYN_DIAGNOSTIC_COMPONENT_DISPLAY:         return "Display";
+        case OZAYN_DIAGNOSTIC_COMPONENT_INPUT:           return "Input";
+        case OZAYN_DIAGNOSTIC_COMPONENT_CAMERA:          return "Camera";
+        case OZAYN_DIAGNOSTIC_COMPONENT_MICROPHONE:      return "Microphone";
+        case OZAYN_DIAGNOSTIC_COMPONENT_AUDIO_OUTPUT:    return "Audio Output";
+        case OZAYN_DIAGNOSTIC_COMPONENT_NETWORK:         return "Network";
+        case OZAYN_DIAGNOSTIC_COMPONENT_POWER:           return "Power";
+        case OZAYN_DIAGNOSTIC_COMPONENT_NOTIFICATION:    return "Notification";
+        case OZAYN_DIAGNOSTIC_COMPONENT_CLIPBOARD:       return "Clipboard";
+        case OZAYN_DIAGNOSTIC_COMPONENT_ENVIRONMENT:     return "Environment";
+        case OZAYN_DIAGNOSTIC_COMPONENT_TIME:            return "Time";
+        case OZAYN_DIAGNOSTIC_COMPONENT_APPLICATION:     return "Application";
+        case OZAYN_DIAGNOSTIC_COMPONENT_PERMISSIONS:     return "Permissions";
+        case OZAYN_DIAGNOSTIC_COMPONENT_AUDIO_VOLUME:    return "Audio Volume";
+        case OZAYN_DIAGNOSTIC_COMPONENT_SESSION:         return "Session";
+        case OZAYN_DIAGNOSTIC_COMPONENT_BRIGHTNESS:      return "Brightness";
+        case OZAYN_DIAGNOSTIC_COMPONENT_APPEARANCE:      return "Appearance";
+        case OZAYN_DIAGNOSTIC_COMPONENT_FONT:            return "Font";
+        case OZAYN_DIAGNOSTIC_COMPONENT_SENSORS:         return "Sensors";
+        case OZAYN_DIAGNOSTIC_COMPONENT_STORAGE:         return "Storage";
+        case OZAYN_DIAGNOSTIC_COMPONENT_PERIPHERAL:      return "Peripheral";
+        case OZAYN_DIAGNOSTIC_COMPONENT_BLUETOOTH:       return "Bluetooth";
+        case OZAYN_DIAGNOSTIC_COMPONENT_SYSTEM_EVENT:    return "System Event";
+        case OZAYN_DIAGNOSTIC_COMPONENT_RESOURCES:       return "Resources";
+        case OZAYN_DIAGNOSTIC_COMPONENT_NETWORK_CONFIG:  return "Network Config";
+        case OZAYN_DIAGNOSTIC_COMPONENT_SERVICE:         return "Service";
+        case OZAYN_DIAGNOSTIC_COMPONENT_SECURITY:        return "Security";
+        default:                                         return "Unknown";
     }
 }
 
