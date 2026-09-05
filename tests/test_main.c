@@ -190,15 +190,15 @@ int main(void) {
 
     /* Section 03 — Secure Data Layer tests */
     printf("\n  --- SECTION 03 TESTS ---");
-    suite_fail = run_data_classification_tests();  suite_pass = 56 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_data_classification_tests();  suite_pass = 55 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_secure_data_object_tests();   suite_pass = 54 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_storage_provider_tests();      suite_pass = 36 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_storage_provider_local_tests(); suite_pass = 45 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_storage_provider_tests();      suite_pass = 32 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_storage_provider_local_tests(); suite_pass = 39 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_protection_provider_tests();    suite_pass = 58 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_protection_provider_sodium_tests(); suite_pass = 42 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_key_management_tests();              suite_pass = 40 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_secure_key_storage_tests();          suite_pass = 36 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
-    suite_fail = run_key_lifecycle_tests();              suite_pass = 26 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_key_lifecycle_tests();              suite_pass = 22 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");
