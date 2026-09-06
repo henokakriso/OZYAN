@@ -242,6 +242,7 @@ This dashboard will display only non-sensitive status information. It will never
 | 12 | Identity Foundation & Identity Data Boundary | COMPLETE |
 | 13 | Authentication Architecture & Credential Boundary | COMPLETE |
 | 14 | Password Authentication & Credential Protection | COMPLETE |
+| 15 | Authentication Attempt Control & Brute-Force Protection | COMPLETE |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
