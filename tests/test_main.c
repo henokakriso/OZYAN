@@ -97,6 +97,7 @@ extern int run_authentication_tests(void);
 extern int run_password_auth_tests(void);
 extern int run_attempt_control_tests(void);
 extern int run_session_management_tests(void);
+extern int run_authorization_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -211,6 +212,7 @@ int main(void) {
     suite_fail = run_password_auth_tests();                suite_pass = 38 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_attempt_control_tests();              suite_pass = 55 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_session_management_tests();           suite_pass = 110 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_authorization_tests();                suite_pass = 84 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");
