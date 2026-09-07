@@ -1,5 +1,6 @@
 #include "authorization.h"
 #include "rbac.h"
+#include "permission.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -379,14 +380,12 @@ ozayn_authz_result_t ozayn_authz_authorize(
         return ozayn_authz_make_deny(OZAYN_AUTHZ_DENY_IDENTITY_ARCHIVED);
 
     /* Step 2.5: RBAC permission check (if RBAC service is configured) */
-    ozayn_rbac_service_t *rbac = svc->config.rbac_service;
-    if (rbac && ozayn_rbac_service_is_initialized(rbac)) {
-        /* Resolve resource type and action from string */
-        ozayn_authz_resource_type_t res_type = OZAYN_AUTHZ_RESOURCE_UNKNOWN;
-        ozayn_authz_action_type_t act_type = OZAYN_AUTHZ_ACTION_UNKNOWN;
-        ozayn_authz_scope_t req_scope = OZAYN_AUTHZ_SCOPE_UNKNOWN;
+    /* Resolve resource type, action, scope from request strings */
+    ozayn_authz_resource_type_t res_type = OZAYN_AUTHZ_RESOURCE_UNKNOWN;
+    ozayn_authz_action_type_t act_type = OZAYN_AUTHZ_ACTION_UNKNOWN;
+    ozayn_authz_scope_t req_scope = OZAYN_AUTHZ_SCOPE_UNKNOWN;
 
-        /* Find resource type enum from request string */
+    {
         static const char *res_names[] = {
             "UNKNOWN", "core", "module", "plugin", "document", "memory",
             "database", "device", "camera", "microphone", "system",
@@ -398,7 +397,6 @@ ozayn_authz_result_t ozayn_authz_authorize(
                 break;
             }
         }
-        /* Find action type enum from request string */
         static const char *act_names[] = {
             "UNKNOWN", "read", "create", "update", "delete", "execute",
             "control", "configure", "install", "uninstall"
@@ -409,7 +407,6 @@ ozayn_authz_result_t ozayn_authz_authorize(
                 break;
             }
         }
-        /* Find scope enum */
         if (request->scope[0] != '\0') {
             static const char *scope_names[] = {
                 "UNKNOWN", "SYSTEM", "USER", "DEVICE", "MODULE", "SERVICE", "GLOBAL"
@@ -421,7 +418,10 @@ ozayn_authz_result_t ozayn_authz_authorize(
                 }
             }
         }
+    }
 
+    ozayn_rbac_service_t *rbac = svc->config.rbac_service;
+    if (rbac && ozayn_rbac_service_is_initialized(rbac)) {
         /* Check if identity has any role assignments */
         if (!ozayn_rbac_has_roles(rbac, session.identity_id))
             return ozayn_authz_make_deny(OZAYN_AUTHZ_DENY_RBAC_NO_PERMISSION);
@@ -430,6 +430,27 @@ ozayn_authz_result_t ozayn_authz_authorize(
         if (!ozayn_rbac_check_permission(rbac, session.identity_id,
                                           res_type, act_type, req_scope))
             return ozayn_authz_make_deny(OZAYN_AUTHZ_DENY_RBAC_NO_PERMISSION);
+    }
+
+    /* Step 2.6: Permission Management check (if permission service is configured) */
+    ozayn_perm_service_t *perm_svc = svc->config.permission_service;
+    if (perm_svc && ozayn_perm_service_is_initialized(perm_svc)) {
+        /* Check if any permission grants this resource+action+scope */
+        int perm_granted = 0;
+        for (int i = 0; i < perm_svc->perm_count; i++) {
+            const ozayn_permission_t *perm = &perm_svc->perms[i];
+            if (!perm->in_use || perm->state != OZAYN_PERM_ACTIVE)
+                continue;
+            if (perm->resource == res_type && perm->action == act_type) {
+                if (perm->scope == OZAYN_AUTHZ_SCOPE_GLOBAL ||
+                    perm->scope == req_scope) {
+                    perm_granted = 1;
+                    break;
+                }
+            }
+        }
+        if (!perm_granted)
+            return ozayn_authz_make_deny(OZAYN_AUTHZ_DENY_PERMISSION_MISSING);
     }
 
     /* Step 3: Evaluate policy via provider */

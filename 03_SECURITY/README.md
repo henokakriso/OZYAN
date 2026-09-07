@@ -246,6 +246,7 @@ This dashboard will display only non-sensitive status information. It will never
 | 16 | Secure Session Management Foundation | COMPLETE |
 | 17 | Authorization & Access-Control Foundation | COMPLETE |
 | 18 | Role-Based Access Control (RBAC) Foundation | COMPLETE |
+| 19 | Permission Management & Policy Enforcement | COMPLETE |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 

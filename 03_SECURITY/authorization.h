@@ -9,6 +9,9 @@
 /* Forward declaration for RBAC integration */
 typedef struct ozayn_rbac_service ozayn_rbac_service_t;
 
+/* Forward declaration for Permission Management integration */
+typedef struct ozayn_perm_service ozayn_perm_service_t;
+
 /*
  * authorization.h — Authorization & Access-Control Foundation (Step 17).
  *
@@ -261,6 +264,7 @@ typedef struct {
     ozayn_sess_service_t        *session_service;
     ozayn_identity_service_t    *identity_service;
     ozayn_rbac_service_t        *rbac_service;
+    ozayn_perm_service_t        *permission_service;
 } ozayn_authz_service_config_t;
 
 /* ============================================================
