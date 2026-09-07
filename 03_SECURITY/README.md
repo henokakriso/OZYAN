@@ -245,6 +245,7 @@ This dashboard will display only non-sensitive status information. It will never
 | 15 | Authentication Attempt Control & Brute-Force Protection | COMPLETE |
 | 16 | Secure Session Management Foundation | COMPLETE |
 | 17 | Authorization & Access-Control Foundation | COMPLETE |
+| 18 | Role-Based Access Control (RBAC) Foundation | COMPLETE |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 

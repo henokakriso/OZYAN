@@ -1,4 +1,5 @@
 #include "authorization.h"
+#include "rbac.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -115,6 +116,8 @@ const char *ozayn_authz_deny_reason_name(ozayn_authz_deny_reason_t reason)
         case OZAYN_AUTHZ_DENY_POLICY_UNAVAILABLE:      return "POLICY_UNAVAILABLE";
         case OZAYN_AUTHZ_DENY_POLICY_ERROR:            return "POLICY_ERROR";
         case OZAYN_AUTHZ_DENY_DEFAULT:                 return "DEFAULT_DENY";
+        case OZAYN_AUTHZ_DENY_RBAC_NO_PERMISSION:      return "RBAC_NO_PERMISSION";
+        case OZAYN_AUTHZ_DENY_RBAC_SCOPE_MISMATCH:     return "RBAC_SCOPE_MISMATCH";
         default:                                       return "UNKNOWN";
     }
 }
@@ -374,6 +377,60 @@ ozayn_authz_result_t ozayn_authz_authorize(
         return ozayn_authz_make_deny(OZAYN_AUTHZ_DENY_IDENTITY_REVOKED);
     if (identity.state == OZAYN_ID_STATE_ARCHIVED)
         return ozayn_authz_make_deny(OZAYN_AUTHZ_DENY_IDENTITY_ARCHIVED);
+
+    /* Step 2.5: RBAC permission check (if RBAC service is configured) */
+    ozayn_rbac_service_t *rbac = svc->config.rbac_service;
+    if (rbac && ozayn_rbac_service_is_initialized(rbac)) {
+        /* Resolve resource type and action from string */
+        ozayn_authz_resource_type_t res_type = OZAYN_AUTHZ_RESOURCE_UNKNOWN;
+        ozayn_authz_action_type_t act_type = OZAYN_AUTHZ_ACTION_UNKNOWN;
+        ozayn_authz_scope_t req_scope = OZAYN_AUTHZ_SCOPE_UNKNOWN;
+
+        /* Find resource type enum from request string */
+        static const char *res_names[] = {
+            "UNKNOWN", "core", "module", "plugin", "document", "memory",
+            "database", "device", "camera", "microphone", "system",
+            "identity", "session", "service"
+        };
+        for (int i = 1; i <= 13; i++) {
+            if (strcmp(res_names[i], request->resource_type) == 0) {
+                res_type = (ozayn_authz_resource_type_t)i;
+                break;
+            }
+        }
+        /* Find action type enum from request string */
+        static const char *act_names[] = {
+            "UNKNOWN", "read", "create", "update", "delete", "execute",
+            "control", "configure", "install", "uninstall"
+        };
+        for (int i = 1; i <= 9; i++) {
+            if (strcmp(act_names[i], request->action) == 0) {
+                act_type = (ozayn_authz_action_type_t)i;
+                break;
+            }
+        }
+        /* Find scope enum */
+        if (request->scope[0] != '\0') {
+            static const char *scope_names[] = {
+                "UNKNOWN", "SYSTEM", "USER", "DEVICE", "MODULE", "SERVICE", "GLOBAL"
+            };
+            for (int i = 1; i <= 6; i++) {
+                if (strcmp(scope_names[i], request->scope) == 0) {
+                    req_scope = (ozayn_authz_scope_t)i;
+                    break;
+                }
+            }
+        }
+
+        /* Check if identity has any role assignments */
+        if (!ozayn_rbac_has_roles(rbac, session.identity_id))
+            return ozayn_authz_make_deny(OZAYN_AUTHZ_DENY_RBAC_NO_PERMISSION);
+
+        /* Check RBAC permission */
+        if (!ozayn_rbac_check_permission(rbac, session.identity_id,
+                                          res_type, act_type, req_scope))
+            return ozayn_authz_make_deny(OZAYN_AUTHZ_DENY_RBAC_NO_PERMISSION);
+    }
 
     /* Step 3: Evaluate policy via provider */
     if (svc->provider_count == 0)

@@ -6,6 +6,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
+/* Forward declaration for RBAC integration */
+typedef struct ozayn_rbac_service ozayn_rbac_service_t;
+
 /*
  * authorization.h — Authorization & Access-Control Foundation (Step 17).
  *
@@ -164,7 +167,9 @@ typedef enum {
     OZAYN_AUTHZ_DENY_POLICY_REJECTED         = 13,
     OZAYN_AUTHZ_DENY_POLICY_UNAVAILABLE      = 14,
     OZAYN_AUTHZ_DENY_POLICY_ERROR            = 15,
-    OZAYN_AUTHZ_DENY_DEFAULT                 = 16
+    OZAYN_AUTHZ_DENY_DEFAULT                 = 16,
+    OZAYN_AUTHZ_DENY_RBAC_NO_PERMISSION      = 17,
+    OZAYN_AUTHZ_DENY_RBAC_SCOPE_MISMATCH     = 18
 } ozayn_authz_deny_reason_t;
 
 /* ============================================================
@@ -255,6 +260,7 @@ struct ozayn_authz_policy_provider {
 typedef struct {
     ozayn_sess_service_t        *session_service;
     ozayn_identity_service_t    *identity_service;
+    ozayn_rbac_service_t        *rbac_service;
 } ozayn_authz_service_config_t;
 
 /* ============================================================
