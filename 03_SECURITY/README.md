@@ -250,6 +250,7 @@ This dashboard will display only non-sensitive status information. It will never
 | 20 | Multi-Factor Authentication Foundation & Enforcement | COMPLETE |
 | 21 | Security Audit & Security Event Logging Foundation | COMPLETE |
 | 23 | Secure Backup & Recovery Foundation | COMPLETE |
+| 24 | Secure Deletion & Data Destruction Foundation | COMPLETE |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
