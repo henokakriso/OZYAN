@@ -340,6 +340,49 @@ SAFE SUMMARY (no secrets, no auth grants)
 - Provider extension: custom diagnostic providers can be registered
 - Fail-closed: unavailable components produce UNAVAILABLE state, not PASS
 
+## Security Alerting (Step 29)
+
+```text
+SECURITY EVENTS
+        ↓
+ALERT CREATION (type, severity, priority, source)
+        ↓
+DEDUP + RATE LIMITING
+        ↓
+ALERT STATE MACHINE
+        ↓
+ESCALATION + NOTIFICATION
+        ↓
+HEALTH / DIAGNOSTIC / INCIDENT INTEGRATION
+        ↓
+CLEANUP + AUDIT
+```
+
+**33 Alert Types:** Configuration, Policy, Auth Failure/Attack/Rate Limit, MFA Failure/Attack, Session Anomaly/Compromise, AuthZ Denial, Privilege Escalation, Role/Permission Tampering, Key Availability/Compromise/Storage, Vault Failure/Integrity, Data Integrity, Audit Failure/Integrity, Backup Failure/Integrity, Restore Failure, Deletion Failure, Incident, Health Degraded/Critical, Diagnostic Fail, Component Unavailable, Lockdown, Resource Exhaustion
+
+**Alert State Machine:** DETECTED → CREATED → ACTIVE → ACKNOWLEDGED → RESOLVING → RESOLVED (+ SUPPRESSED, EXPIRED, FAILED, CANCELLED)
+
+**5 Severity Levels:** INFO, NOTICE, WARNING, HIGH, CRITICAL
+
+**5 Priority Levels:** LOW, NORMAL, HIGH, URGENT, IMMEDIATE
+
+**7 Notification Channels:** LOCAL, DESKTOP, EMAIL, SMS, PUSH, CONTROL_ROOM, EXTERNAL
+
+**Key Properties:**
+- `ozayn_salert_` prefix (avoids collision with existing naming conventions)
+- Ring buffer allocation (512 max alerts, 64 max notify queue)
+- Alert deduplication with configurable window and auto-suppress
+- Rate limiting per type with sliding window
+- Notification provider vtable abstraction (extensible)
+- Retry with configurable max retries before FAILED state
+- Threshold tracking per type with configurable windows
+- Lifecycle operations: acknowledge, resolve, suppress, cancel
+- Escalation: increases severity/priority up to max levels
+- Health/Diagnostic/Incident integration (respects service availability)
+- Cleanup: expired and resolved alerts cleaned automatically
+- Safe content: title/body generation excludes secrets
+- Audit events for all alert state changes
+
 ## Design Principles
 
 1. **Least Privilege** — Components receive only the access they require
