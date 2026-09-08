@@ -106,6 +106,7 @@ extern int run_backup_tests(void);
 extern int run_deletion_tests(void);
 extern int run_incident_tests(void);
 extern int run_sec_config_tests(void);
+extern int run_sec_health_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -229,6 +230,7 @@ int main(void) {
     suite_fail = run_deletion_tests();                     suite_pass = 81 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_incident_tests();                     suite_pass = 127 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_sec_config_tests();                   suite_pass = 109 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_sec_health_tests();                   suite_pass = 112 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

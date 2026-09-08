@@ -270,6 +270,43 @@ The following functionality is intentionally NOT implemented in Step 01 and will
 - Secure data serialization
 - Cross-platform security API
 
+## Security Health Monitoring (Step 27)
+
+The Security Health Monitoring system provides deterministic internal evaluation of OZAYN's security infrastructure:
+
+```text
+SECURITY COMPONENTS
+        ↓
+HEALTH CHECK PROVIDERS
+        ↓
+SECURITY HEALTH SERVICE
+        ↓
+HEALTH AGGREGATION
+        ↓
+SECURITY HEALTH SNAPSHOT
+        ↓
+SAFE OPERATION DECISION
+        ↓
+AUDIT / INCIDENT RESPONSE
+```
+
+**Health States:** HEALTHY, DEGRADED, WARNING, CRITICAL, UNAVAILABLE, UNKNOWN, LOCKDOWN
+
+**Monitored Components (23):**
+- Security Configuration, Security Policy, Identity, Authentication
+- Attempt Control, MFA, Session, Authorization, RBAC, Permissions
+- Secure Data, Storage, Protection, Key Management, Key Storage
+- Key Lifecycle, Secure Vault, Audit, Audit Integrity, Backup
+- Recovery, Secure Deletion, Incident Response
+
+**Key Properties:**
+- Fail-closed: UNKNOWN never silently becomes HEALTHY
+- Dependency-aware: failures propagate through the security stack
+- Freshness semantics: stale health results are not trusted
+- No secrets in health data; metadata only
+- No health-based authorization bypass
+- Operation safety check for security-sensitive operations
+
 ## Design Principles
 
 1. **Least Privilege** — Components receive only the access they require
