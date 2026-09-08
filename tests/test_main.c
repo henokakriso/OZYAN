@@ -101,6 +101,7 @@ extern int run_authorization_tests(void);
 extern int run_rbac_tests(void);
 extern int run_permission_tests(void);
 extern int run_mfa_tests(void);
+extern int run_audit_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -219,6 +220,7 @@ int main(void) {
     suite_fail = run_rbac_tests();                        suite_pass = 88 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_permission_tests();                  suite_pass = 68 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_mfa_tests();                         suite_pass = 69 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_audit_tests();                        suite_pass = 112 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

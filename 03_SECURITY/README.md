@@ -248,6 +248,7 @@ This dashboard will display only non-sensitive status information. It will never
 | 18 | Role-Based Access Control (RBAC) Foundation | COMPLETE |
 | 19 | Permission Management & Policy Enforcement | COMPLETE |
 | 20 | Multi-Factor Authentication Foundation & Enforcement | COMPLETE |
+| 21 | Security Audit & Security Event Logging Foundation | COMPLETE |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
