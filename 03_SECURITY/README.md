@@ -251,6 +251,7 @@ This dashboard will display only non-sensitive status information. It will never
 | 21 | Security Audit & Security Event Logging Foundation | COMPLETE |
 | 23 | Secure Backup & Recovery Foundation | COMPLETE |
 | 24 | Secure Deletion & Data Destruction Foundation | COMPLETE |
+| 25 | Security Recovery, Incident Response & Compromise Handling Foundation | COMPLETE |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
