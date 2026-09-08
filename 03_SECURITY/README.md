@@ -252,6 +252,7 @@ This dashboard will display only non-sensitive status information. It will never
 | 23 | Secure Backup & Recovery Foundation | COMPLETE |
 | 24 | Secure Deletion & Data Destruction Foundation | COMPLETE |
 | 25 | Security Recovery, Incident Response & Compromise Handling Foundation | COMPLETE |
+| 26 | Security Policy & Configuration Hardening Foundation | COMPLETE |
 | ... | ... | ... |
 | 35 | (future) | PENDING |
 
