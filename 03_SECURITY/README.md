@@ -307,6 +307,39 @@ AUDIT / INCIDENT RESPONSE
 - No health-based authorization bypass
 - Operation safety check for security-sensitive operations
 
+## Security Diagnostics & Self-Diagnostics (Step 28)
+
+The Security Diagnostics system provides structured diagnostic evaluation explaining WHY security components are healthy or unhealthy, with actionable recommendations:
+
+```text
+DIAGNOSTIC CHECKS (23 built-in)
+        ↓
+PROVIDER EXTENSION POINT
+        ↓
+DEPENDENCY GRAPH + CYCLE DETECTION
+        ↓
+RESULTS (ring buffer, 256 max)
+        ↓
+SUMMARY + RECOMMENDATIONS
+        ↓
+SAFE SUMMARY (no secrets, no auth grants)
+```
+
+**Diagnostic Checks (23):** Configuration, Policy, Identity, Authentication, Attempt Control, MFA, Session, Authorization, RBAC, Permission, Secure Data, Storage, Protection, Key Management, Key Storage, Key Lifecycle, Vault, Audit, Audit Integrity, Backup, Recovery, Deletion, Incident Response
+
+**16 Check Categories:** Configuration, Policy, Availability, Dependency, Integrity, Storage, Key, Protection, Authentication, Authorization, Audit, Backup, Recovery, Deletion, Incident Response, Resource
+
+**16 Recommendation Codes:** Reload Configuration, Check Security Policy, Check Platform Key Store, Verify Storage, Rotate Compromised Key, Run Backup Validation, Review Security Incident, Check Identity Service, Reauthenticate, Check Audit Integrity, Check Deletion Policy, Verify Protection, Check Key Lifecycle, Check Session Policy, Check Vault Dependencies
+
+**Key Properties:**
+- `ozayn_sdiag_` prefix (avoids collision with existing `ozayn_sd_` secure data types)
+- Results are metadata only — no secrets, no plaintext, no auth grants
+- Cycle detection prevents infinite recursion in dependency graphs
+- Mode/cost control: READ_ONLY=LOW only, STANDARD=LOW+MEDIUM, DEEP=all
+- Freshness tracking: stale results flagged, not trusted
+- Provider extension: custom diagnostic providers can be registered
+- Fail-closed: unavailable components produce UNAVAILABLE state, not PASS
+
 ## Design Principles
 
 1. **Least Privilege** — Components receive only the access they require
