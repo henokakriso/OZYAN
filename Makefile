@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -std=c11 -Iinclude -Ivendor/libsodium/include -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE $(shell pkg-config --cflags dbus-1 2>/dev/null)
+CFLAGS  = -Wall -Wextra -std=c11 -mcmodel=large -Iinclude -Ivendor/libsodium/include -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE $(shell pkg-config --cflags dbus-1 2>/dev/null)
 LDFLAGS = -ldl -rdynamic -Lvendor/libsodium/lib -lsodium
 BUILD   = build
 TARGET  = ozayn
@@ -45,7 +45,7 @@ OBJS    += $(CAP_OBJ)
 
 # Secure Data Layer (Section 03)
 SEC_SRC = 03_SECURITY/data_classification.c 03_SECURITY/secure_data.c 03_SECURITY/secure_data_object.c 03_SECURITY/storage_provider.c 03_SECURITY/storage_provider_mem.c 03_SECURITY/storage_provider_local.c
-SEC_OBJ = $(BUILD)/03_SECURITY/data_classification.o $(BUILD)/03_SECURITY/secure_data.o $(BUILD)/03_SECURITY/secure_data_object.o $(BUILD)/03_SECURITY/storage_provider.o $(BUILD)/03_SECURITY/storage_provider_mem.o $(BUILD)/03_SECURITY/storage_provider_local.o $(BUILD)/03_SECURITY/protection_provider.o $(BUILD)/03_SECURITY/protection_provider_mock.o $(BUILD)/03_SECURITY/key_provider.o $(BUILD)/03_SECURITY/key_provider_test.o $(BUILD)/03_SECURITY/protection_provider_sodium.o $(BUILD)/03_SECURITY/secure_key_storage.o $(BUILD)/03_SECURITY/secure_key_storage_test.o $(BUILD)/03_SECURITY/key_lifecycle.o $(BUILD)/03_SECURITY/secure_vault.o $(BUILD)/03_SECURITY/identity.o $(BUILD)/03_SECURITY/authentication.o $(BUILD)/03_SECURITY/password_auth.o $(BUILD)/03_SECURITY/attempt_control.o $(BUILD)/03_SECURITY/session_management.o $(BUILD)/03_SECURITY/authorization.o $(BUILD)/03_SECURITY/rbac.o $(BUILD)/03_SECURITY/permission.o $(BUILD)/03_SECURITY/mfa.o $(BUILD)/03_SECURITY/audit.o
+SEC_OBJ = $(BUILD)/03_SECURITY/data_classification.o $(BUILD)/03_SECURITY/secure_data.o $(BUILD)/03_SECURITY/secure_data_object.o $(BUILD)/03_SECURITY/storage_provider.o $(BUILD)/03_SECURITY/storage_provider_mem.o $(BUILD)/03_SECURITY/storage_provider_local.o $(BUILD)/03_SECURITY/protection_provider.o $(BUILD)/03_SECURITY/protection_provider_mock.o $(BUILD)/03_SECURITY/key_provider.o $(BUILD)/03_SECURITY/key_provider_test.o $(BUILD)/03_SECURITY/protection_provider_sodium.o $(BUILD)/03_SECURITY/secure_key_storage.o $(BUILD)/03_SECURITY/secure_key_storage_test.o $(BUILD)/03_SECURITY/key_lifecycle.o $(BUILD)/03_SECURITY/secure_vault.o $(BUILD)/03_SECURITY/identity.o $(BUILD)/03_SECURITY/authentication.o $(BUILD)/03_SECURITY/password_auth.o $(BUILD)/03_SECURITY/attempt_control.o $(BUILD)/03_SECURITY/session_management.o $(BUILD)/03_SECURITY/authorization.o $(BUILD)/03_SECURITY/rbac.o $(BUILD)/03_SECURITY/permission.o $(BUILD)/03_SECURITY/mfa.o $(BUILD)/03_SECURITY/audit.o $(BUILD)/03_SECURITY/backup.o
 OBJS    += $(SEC_OBJ)
 
 PLUGIN_DIR  = plugins
