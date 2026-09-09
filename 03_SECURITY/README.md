@@ -258,6 +258,7 @@ This dashboard will display only non-sensitive status information. It will never
 | 29 | Security Alerting & Security Notification Foundation | COMPLETE |
 | 30 | Security Notification Routing & Delivery Foundation | COMPLETE |
 | 31 | Security Event Correlation & Threat Detection Foundation | COMPLETE |
+| 32 | Security Threat Intelligence & Evidence Analysis Foundation | COMPLETE |
 | 35 | (future) | PENDING |
 
 ## Deferred Functionality
@@ -479,6 +480,54 @@ RESOURCE SAFETY (bounded ring buffers, expiration, cleanup)
 - Resource exhaustion protection (bounded buffers, max limits)
 - No secrets in normalized events — metadata only
 - Detection informs enforcement but does NOT replace enforcement
+
+## Security Threat Intelligence & Evidence Analysis (Step 32)
+
+```text
+RAW SECURITY EVIDENCE (audit, health, diag, detect, incident, alert)
+        ↓
+EVIDENCE COLLECTION (18 types, dedup, ring buffer)
+        ↓
+EVIDENCE VALIDATION (integrity, reliability, relevance assessment)
+        ↓
+EVIDENCE SETS (grouping, role assignment: primary/supporting/conflicting/contextual)
+        ↓
+THREAT ASSESSMENT (state machine, confidence calculation, explanation codes)
+        ↓
+INCIDENT INTEGRATION (Step 25)
+        ↓
+ALERT INTEGRATION (Step 29)
+        ↓
+AUDIT EVENT LOGGING
+        ↓
+RESOURCE SAFETY (bounded ring buffers, expiration, cleanup)
+```
+
+**18 Evidence Types:** AUDIT_EVENT, AUDIT_INTEGRITY, HEALTH_RESULT, DIAGNOSTIC_RESULT, CORRELATION_RESULT, THREAT_FINDING, AUTH_RESULT, MFA_RESULT, SESSION_RESULT, AUTHZ_RESULT, RBAC_RESULT, PERMISSION_RESULT, KEY_SECURITY, VAULT_SECURITY, BACKUP_SECURITY, DELETION_SECURITY, CONFIG_SECURITY, INCIDENT_RESULT
+
+**5 Reliability Levels:** UNKNOWN, LOW, MEDIUM, HIGH, VERIFIED
+
+**5 Relevance Levels:** IRRELEVANT, LOW, MEDIUM, HIGH, CRITICAL
+
+**4 Evidence Roles:** PRIMARY, SUPPORTING, CONFLICTING, CONTEXTUAL
+
+**4 Confidence Levels:** LOW, MEDIUM, HIGH, VERY_HIGH
+
+**Key Properties:**
+- `ozayn_sintel_` prefix
+- Evidence-based intelligence (not AI/ML) — deterministic confidence calculation
+- Ring buffer allocation (512 evidence, 128 evidence sets, 256 assessments)
+- Evidence deduplication with configurable window
+- Reliability assessment based on integrity state and evidence type
+- Relevance assessment based on severity
+- Deterministic confidence calculation from evidence composition
+- 16 explanation codes for assessment reasoning
+- Incident integration via `ozayn_ir_report` (Step 25)
+- Alert integration via `ozayn_salert_create` (Step 29)
+- Audit events for all intelligence operations
+- Resource exhaustion protection (bounded buffers, max limits)
+- No secrets in evidence — metadata only
+- Intelligence informs response but does NOT replace enforcement
 
 ## Design Principles
 
