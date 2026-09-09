@@ -253,7 +253,11 @@ This dashboard will display only non-sensitive status information. It will never
 | 24 | Secure Deletion & Data Destruction Foundation | COMPLETE |
 | 25 | Security Recovery, Incident Response & Compromise Handling Foundation | COMPLETE |
 | 26 | Security Policy & Configuration Hardening Foundation | COMPLETE |
-| ... | ... | ... |
+| 27 | Security Health Monitoring & Security Self-Assessment Foundation | COMPLETE |
+| 28 | Security Diagnostics & Self-Diagnostics Foundation | COMPLETE |
+| 29 | Security Alerting & Security Notification Foundation | COMPLETE |
+| 30 | Security Notification Routing & Delivery Foundation | COMPLETE |
+| 31 | Security Event Correlation & Threat Detection Foundation | COMPLETE |
 | 35 | (future) | PENDING |
 
 ## Deferred Functionality
@@ -429,6 +433,52 @@ SECURITY AUDIT
 - Escalation creates new notification only when severity actually changes
 - Audit events for all notification lifecycle transitions
 - Credential boundary: providers never receive secrets
+
+## Security Event Correlation & Threat Detection (Step 31)
+
+```text
+RAW SECURITY EVENTS (audit, health, diag, incident, alerting)
+        ↓
+NORMALIZATION (37 event categories)
+        ↓
+PATTERN EVALUATION (5 types: single, threshold, sequence, correlated, state-transition)
+        ↓
+CORRELATION ENGINE (ring buffer, window-based, identity/session/resource binding)
+        ↓
+THREAT FINDING (deduplication, state machine, severity, confidence)
+        ↓
+INCIDENT RESPONSE INTEGRATION (Step 25)
+        ↓
+SECURITY ALERTING INTEGRATION (Step 29)
+        ↓
+AUDIT EVENT LOGGING
+        ↓
+RESOURCE SAFETY (bounded ring buffers, expiration, cleanup)
+```
+
+**37 Normalized Event Categories:** AUTH_SUCCESS/FAILURE/RATE_LIMIT/BLOCKED, MFA_SUCCESS/FAILURE/BLOCKED, SESSION_CREATED/VALIDATED/FAILED/TERMINATED, AUTHZ_ALLOWED/DENIED, PERM_DENIED/MATCHED, ROLE_CREATED/REVOKED/ASSIGNED/ASSIGN_REVOKED, KEY_CREATED/REVOKED/UNAVAILABLE, VAULT_ACCESS/FAILURE/INTEGRITY, AUDIT_FAILURE/INTEGRITY, CONFIG_CHANGED/REJECTED, INTEGRITY_FAILURE, HEALTH_DEGRADED/CRITICAL, COMPONENT_UNAVAILABLE, BACKUP_FAILURE, DELETION_FAILURE, INCIDENT_DETECTED, VIOLATION_DETECTED
+
+**5 Pattern Types:** SINGLE (one event matches), THRESHOLD (N events in window), SEQUENCE (ordered events in window), CORRELATED_SEQ (multi-source sequence), STATE_TRANSITION (component state change)
+
+**7 Correlation States:** NEW → ACTIVE → MATCHED → SUSPICIOUS → CONFIRMED (+ EXPIRED, DISMISSED)
+
+**7 Finding States:** DETECTED → INVESTIGATING → CONFIRMED_THREAT (+ FALSE_POSITIVE, EXPIRED, INCIDENT_CREATED, ALERT_CREATED)
+
+**5 Confidence Levels:** LOW, MEDIUM, HIGH, VERY_HIGH
+
+**Key Properties:**
+- `ozayn_sdet_` prefix (avoids collision with existing `ozayn_sd_` secure data types)
+- Deterministic detection (no AI/ML) — patterns are rule-based
+- Ring buffer allocation (512 events, 128 correlations, 256 findings, 64 patterns)
+- Finding deduplication with configurable window
+- Audit normalization from all security subsystems
+- State machine with guarded transitions
+- Incident integration via `ozayn_ir_report` (Step 25)
+- Alert integration via `ozayn_salert_create` (Step 29)
+- Audit events for all detections
+- Resource exhaustion protection (bounded buffers, max limits)
+- No secrets in normalized events — metadata only
+- Detection informs enforcement but does NOT replace enforcement
 
 ## Design Principles
 
