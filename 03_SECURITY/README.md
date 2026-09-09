@@ -383,6 +383,53 @@ CLEANUP + AUDIT
 - Safe content: title/body generation excludes secrets
 - Audit events for all alert state changes
 
+## Security Notification Routing & Delivery (Step 30)
+
+```text
+SECURITY CONDITION
+        ↓
+SECURITY ALERT (Step 29)
+        ↓
+ALERT POLICY
+        ↓
+NOTIFICATION ROUTING
+        ↓
+NOTIFICATION POLICY
+        ↓
+CHANNEL SELECTION
+        ↓
+DELIVERY QUEUE
+        ↓
+NOTIFICATION PROVIDER
+        ↓
+DELIVERY RESULT
+        ↓
+SECURITY AUDIT
+```
+
+**Notification States:** CREATED → ROUTING → QUEUED → DELIVERING → DELIVERED (+ DELIVERY_FAILED → RETRY_SCHEDULED → QUEUED, EXHAUSTED, EXPIRED, CANCELLED)
+
+**Destination States:** UNINITIALIZED → AVAILABLE → DISABLED/UNAVAILABLE/SUSPENDED/REVOKED (REVOKED is terminal)
+
+**Delivery Results:** SUCCESS, TEMPORARY_FAILURE, PERMANENT_FAILURE, UNAVAILABLE, REJECTED, TIMEOUT, EXPIRED, CANCELLED
+
+**Security Classifications:** PUBLIC, INTERNAL, SENSITIVE, HIGHLY_SENSITIVE — controls which channels may receive content
+
+**Retry Policy:** Exponential backoff with jitter, bounded retry count, bounded delay, expiration limits
+
+**Key Properties:**
+- `ozayn_snotify_` prefix (avoids collision with `ozayn_salert_` from Step 29)
+- Deterministic routing via policy-controlled rules (severity/priority/type filtering)
+- Default-safe: no route = controlled failure, never invent destination
+- External channels disabled by default (EMAIL, SMS, PUSH, EXTERNAL)
+- HIGHLY_SENSITIVE classification blocks all channels except LOCAL
+- Provider vtable abstraction with timeout support
+- Notification deduplication: same alert re-evaluation creates no duplicate
+- Suppressed alerts produce no new notifications
+- Escalation creates new notification only when severity actually changes
+- Audit events for all notification lifecycle transitions
+- Credential boundary: providers never receive secrets
+
 ## Design Principles
 
 1. **Least Privilege** — Components receive only the access they require
