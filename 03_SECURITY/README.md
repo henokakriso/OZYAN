@@ -529,6 +529,42 @@ RESOURCE SAFETY (bounded ring buffers, expiration, cleanup)
 - No secrets in evidence — metadata only
 - Intelligence informs response but does NOT replace enforcement
 
+## Security Risk Scoring & Decision Support (Step 33)
+
+Converts threat findings and evidence assessments into a deterministic, explainable security-risk score and recommends prioritized response actions.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `sec_risk.h` | API, types, enums, service state |
+| `sec_risk.c` | Risk calculation, aggregation, dedup, temporal, decisions, integrations |
+| `tests/test_sec_risk.c` | 89 unit tests |
+
+### API Prefix
+
+- `ozayn_sr_` prefix
+
+### Key Concepts
+
+- **Deterministic scoring** — Same inputs always produce the same risk score and level
+- **Factor-based** — 12 risk factors (threat severity, impact, reliability, confidence, classification, sensitivity, scope, assurance, integrity, persistence, incident state, health)
+- **Score→Level mapping** — Score (0-100) maps to UNKNOWN/LOW/MODERATE/HIGH/CRITICAL via policy thresholds
+- **Risk aggregation** — Groups related assessments by identity, resource, or incident
+- **Deduplication** — Time-windowed dedup prevents duplicate risk assessments
+- **Temporal risk** — Evaluates assessment age (CURRENT/AGING/EXPIRED)
+- **Decision support** — Recommends actions (MONITOR, INVESTIGATE, ESCALATE_INCIDENT, REQUIRE_MFA, etc.)
+- **Safety caps** — UNKNOWN reliability caps at MODERATE; integrity failure caps at MODERATE
+
+### Integration Points
+
+- Intelligence via `ozayn_sintel_*` (Step 32) — threat assessments, evidence
+- Detection via `ozayn_sdet_*` (Step 31) — correlated events
+- Incident integration via `ozayn_ir_report` (Step 25)
+- Alert integration via `ozayn_salert_create` (Step 29)
+- Health integration via `ozayn_sh_*` (Step 27) — health impact assessment
+- Audit events for all risk operations
+
 ## Design Principles
 
 1. **Least Privilege** — Components receive only the access they require
