@@ -565,6 +565,83 @@ Converts threat findings and evidence assessments into a deterministic, explaina
 - Health integration via `ozayn_sh_*` (Step 27) — health impact assessment
 - Audit events for all risk operations
 
+## Security Orchestration & Controlled Response (Step 34)
+
+Translates risk decisions into auditable, policy-validated, human-approved response plans that are executed through existing security services.
+
+### Core Principle
+
+**A recommendation is not an authorization.** Every response must pass through:
+
+```text
+RECOMMENDATION
+    ↓
+RESPONSE PLAN (plan creation + action composition)
+    ↓
+POLICY VALIDATION (config_service + action-level checks)
+    ↓
+AUTHORIZATION CHECK (authz framework)
+    ↓
+ASSURANCE CHECK (MFA / re-auth)
+    ↓
+APPROVAL (auto or explicit human approval)
+    ↓
+CONTROLLED EXECUTION (per-action dispatch to existing services)
+    ↓
+VERIFICATION
+    ↓
+AUDIT TRAIL
+```
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `sec_response.h` | API, types, enums, service state, policy, config |
+| `sec_response.c` | Orchestration lifecycle, plan/action CRUD, validation, authorization, execution, verification, audit |
+| `tests/test_sec_response.c` | 77 unit tests |
+
+### API Prefix
+
+- `ozayn_sresp_` prefix
+
+### Key Concepts
+
+- **Plan lifecycle** — CREATED → VALIDATING → VALIDATED → APPROVED → EXECUTING → COMPLETED/PARTIAL/FAILED
+- **14 action types** — MONITOR, INVESTIGATE, REQUIRE_REAUTH, REQUIRE_MFA, REVOKE_SESSION, SUSPEND_IDENTITY, REVIEW_*, RESTRICT_RESOURCE, SECURITY_LOCKDOWN
+- **3 execution modes** — VALIDATE_ONLY, DRY_RUN, APPROVED_EXECUTION
+- **4 assurance levels** — NONE, SINGLE, MULTI, HIGH
+- **Policy validation** — Actions checked against configurable policy (approval requirements, assurance, rollback capability)
+- **Authorization integration** — Plans checked against `ozayn_authz_*` (Step 15)
+- **Precondition checks** — 15 precondition categories before execution
+- **Conflict detection** — Identifies conflicting actions across active plans
+- **Idempotent execution** — Duplicate action execution detected and skipped
+- **Rollback support** — 4 rollback types (FULL, PARTIAL, COMPENSATING, NONE)
+- **Audit trail** — Complete execution history with timestamps
+- **No autonomous execution** — Every action requires policy + authorization + approval
+- **No AI/ML** — All orchestration is deterministic rule-based logic
+
+### Execution Modes
+
+| Mode | Behavior |
+|------|----------|
+| VALIDATE_ONLY | Validates plan structure and policy; no execution |
+| DRY_RUN | Validates and simulates execution; no side effects |
+| APPROVED_EXECUTION | Full execution through existing services |
+
+### Integration Points
+
+- Authorization via `ozayn_authz_*` (Step 15)
+- Session management via `ozayn_sess_*` (Step 12)
+- Identity via `ozayn_id_*` (Step 11)
+- MFA via `ozayn_mfa_*` (Step 13)
+- Incident response via `ozayn_ir_*` (Step 25)
+- Risk scoring via `ozayn_sr_*` (Step 33)
+- Threat intelligence via `ozayn_sintel_*` (Step 32)
+- Security config via `ozayn_sc_*` (Step 26)
+- Security alerts via `ozayn_salert_*` (Step 29)
+- Audit events for all orchestration operations
+
 ## Design Principles
 
 1. **Least Privilege** — Components receive only the access they require

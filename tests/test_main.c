@@ -113,6 +113,7 @@ extern int run_sec_notify_tests(void);
 extern int run_sec_detect_tests(void);
 extern int run_sec_intel_tests(void);
 extern int run_sec_risk_tests(void);
+extern int run_sec_response_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -243,6 +244,7 @@ int main(void) {
     suite_fail = run_sec_detect_tests();                   suite_pass = 97 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_sec_intel_tests();                    suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_sec_risk_tests();                     suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_sec_response_tests();                  suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");
