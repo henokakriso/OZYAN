@@ -225,7 +225,10 @@ OZAYN is an active research and development project.
 - [x] Multimodal interaction design
 - [x] Cross-platform direction
 - [x] 3D interaction concept
-- [ ] Core implementation
+- [x] Core implementation (Section 01)
+- [x] Cross-platform system layer (Section 02)
+- [x] Secure data vault (Section 03)
+- [x] Control room foundation (Section 04, Step 01)
 - [ ] Native desktop environment
 - [ ] Vision subsystem
 - [ ] Voice subsystem

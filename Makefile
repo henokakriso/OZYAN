@@ -48,6 +48,10 @@ SEC_SRC = 03_SECURITY/data_classification.c 03_SECURITY/secure_data.c 03_SECURIT
 SEC_OBJ = $(BUILD)/03_SECURITY/data_classification.o $(BUILD)/03_SECURITY/secure_data.o $(BUILD)/03_SECURITY/secure_data_object.o $(BUILD)/03_SECURITY/storage_provider.o $(BUILD)/03_SECURITY/storage_provider_mem.o $(BUILD)/03_SECURITY/storage_provider_local.o $(BUILD)/03_SECURITY/protection_provider.o $(BUILD)/03_SECURITY/protection_provider_mock.o $(BUILD)/03_SECURITY/key_provider.o $(BUILD)/03_SECURITY/key_provider_test.o $(BUILD)/03_SECURITY/protection_provider_sodium.o $(BUILD)/03_SECURITY/secure_key_storage.o $(BUILD)/03_SECURITY/secure_key_storage_test.o $(BUILD)/03_SECURITY/key_lifecycle.o $(BUILD)/03_SECURITY/secure_vault.o $(BUILD)/03_SECURITY/identity.o $(BUILD)/03_SECURITY/authentication.o $(BUILD)/03_SECURITY/password_auth.o $(BUILD)/03_SECURITY/attempt_control.o $(BUILD)/03_SECURITY/session_management.o $(BUILD)/03_SECURITY/authorization.o $(BUILD)/03_SECURITY/rbac.o $(BUILD)/03_SECURITY/permission.o $(BUILD)/03_SECURITY/mfa.o $(BUILD)/03_SECURITY/audit.o $(BUILD)/03_SECURITY/backup.o $(BUILD)/03_SECURITY/deletion.o $(BUILD)/03_SECURITY/incident.o $(BUILD)/03_SECURITY/sec_config.o $(BUILD)/03_SECURITY/sec_health.o $(BUILD)/03_SECURITY/sec_diag.o $(BUILD)/03_SECURITY/sec_alert.o $(BUILD)/03_SECURITY/sec_notify.o $(BUILD)/03_SECURITY/sec_detect.o $(BUILD)/03_SECURITY/sec_intel.o $(BUILD)/03_SECURITY/sec_risk.o $(BUILD)/03_SECURITY/sec_response.o
 OBJS    += $(SEC_OBJ)
 
+# Control Room (Section 04)
+CR_OBJ = $(BUILD)/04_CONTROL_ROOM/control_room.o
+OBJS    += $(CR_OBJ)
+
 PLUGIN_DIR  = plugins
 PLUGIN_SRCS = $(wildcard $(PLUGIN_DIR)/*.c)
 PLUGIN_SO   = $(patsubst $(PLUGIN_DIR)/%.c, $(PLUGIN_DIR)/%.so, $(PLUGIN_SRCS))
@@ -58,7 +62,7 @@ TOOLS_BIN   = $(patsubst $(TOOLS_DIR)/%.c, $(BUILD)/%, $(TOOLS_SRCS))
 
 # Test sources
 TEST_MAIN   = tests/test_main.c
-TEST_SRCS   = $(wildcard tests/unit/*.c) $(wildcard tests/integration/*.c) $(wildcard tests/system/*.c) $(wildcard tests/failure/*.c) $(wildcard tests/regression/*.c) $(wildcard 02_PLATFORM/tests/*.c) $(wildcard 03_SECURITY/tests/*.c)
+TEST_SRCS   = $(wildcard tests/unit/*.c) $(wildcard tests/integration/*.c) $(wildcard tests/system/*.c) $(wildcard tests/failure/*.c) $(wildcard tests/regression/*.c) $(wildcard 02_PLATFORM/tests/*.c) $(wildcard 03_SECURITY/tests/*.c) $(wildcard 04_CONTROL_ROOM/tests/*.c)
 TEST_ALL_SRCS = $(TEST_MAIN) $(TEST_SRCS)
 TEST_BIN    = $(BUILD)/ozayn_test
 TEST_OBJS   = $(filter-out build/main.o, $(OBJS))
@@ -76,6 +80,10 @@ $(BUILD)/02_PLATFORM/common/%.o: 02_PLATFORM/common/%.c | $(BUILD)
 $(BUILD)/03_SECURITY/%.o: 03_SECURITY/%.c | $(BUILD)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/04_CONTROL_ROOM/%.o: 04_CONTROL_ROOM/%.c | $(BUILD)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -I03_SECURITY -c $< -o $@
 
 $(BUILD)/$(TARGET): $(OBJS)
 	$(CC) $(OBJS) $(LDFLAGS) -o $@
