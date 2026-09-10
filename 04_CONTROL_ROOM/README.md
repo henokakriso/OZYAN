@@ -79,6 +79,32 @@ Persistent operation queue managing lifecycle from submission to completion:
 - No secret logging
 - Bounded resource usage
 
+### Step 06 — Operation History & Execution Records (`operation_history.h/.c`)
+Persistent, immutable historical records of completed operations, separate from the live queue:
+- **Execution Records** — immutable records of completed operations with full context
+- **Terminal States** — SUCCEEDED, FAILED, CANCELLED, TIMEOUT, REJECTED, EXPIRED, UNAVAILABLE, UNSUPPORTED
+- **Execution Attempts** — multiple attempts per operation (for retries), each independently tracked
+- **Timing** — created, queued, started, completed timestamps with duration calculation
+- **Structured Results** — result categories (SUCCESS, TARGET_UNAVAILABLE, AUTHORIZATION_FAILED, etc.)
+- **Failure Information** — failure categories (COMPONENT_DOWN, AUTH_DENIED, TIMEOUT_EXCEEDED, etc.)
+- **History Storage** — static in-memory array with bounded capacity
+- **Retention** — configurable max records, max age, security record preservation
+- **Query API** — filter by target, capability, action, state, result, requester, time range
+- **Pagination** — bounded query results with limit/offset
+- **Deterministic Sorting** — consistent ordering for reproducible queries
+- **Correlation** — operation_id, request_id, attempt_id, record_id for full traceability
+- **Immutability** — finalized records cannot be modified
+- **Event Integration** — emits history events (CREATED, ATTEMPT_STARTED/COMPLETED/FAILED, RECORD_FINALIZED, RECORD_EXPIRED)
+- **Audit Integration** — records audit events for history operations
+- **Security Audit Separation** — operational history is distinct from security audit records
+
+**Security guarantees:**
+- No secret storage (passwords, keys, tokens, credentials)
+- Authorization via Section 03 (not bypassed)
+- Fail-closed on storage failure
+- Bounded resource usage
+- Deterministic retention (oldest expired first)
+
 ## Tests
 
 | Module | Tests |
@@ -87,7 +113,8 @@ Persistent operation queue managing lifecycle from submission to completion:
 | Component Registry | 89/89 |
 | Command Router | 70/70 |
 | Operation Queue | 80/80 |
-| **Total** | **328/328** |
+| Operation History | 85/85 |
+| **Total** | **413/413** |
 
 ## Architecture Notes
 
@@ -96,3 +123,4 @@ Persistent operation queue managing lifecycle from submission to completion:
 - `-I03_SECURITY` is added per-file in Makefile rules, not in global CFLAGS
 - Command Router prefix: `ozayn_router_`
 - Operation Queue prefix: `ozayn_oq_`
+- Operation History prefix: `ozayn_oh_`
