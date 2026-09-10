@@ -54,6 +54,31 @@ Safe command routing through the Control Room pipeline:
 - No secret logging
 - Fail-closed on authorization failure
 
+### Step 05 — Operation Queue & Execution Lifecycle (`operation_queue.h/.c`)
+Persistent operation queue managing lifecycle from submission to completion:
+- **Lifecycle States** — CREATED → QUEUED → WAITING → DISPATCHING → RUNNING → SUCCEEDED/FAILED/CANCELLED/TIMEOUT/EXPIRED
+- **Priority Scheduling** — LOW, NORMAL, HIGH, CRITICAL with configurable policy
+- **Fairness** — same-priority entries dispatched in FIFO order
+- **Enqueue** — validates fields, generates unique IDs, per-component and per-requester resource limits
+- **Dequeue** — respects concurrency limit, priority ordering, precondition and authorization rechecks at dispatch time
+- **Complete/Fail** — terminal state transitions with result code, error detail, completion timestamp
+- **Cancellation** — safe for queued entries, rejects cancellation of running/terminal operations
+- **Timeout** — queue timeout and execution timeout with automatic state transition
+- **Expiration** — automatic cleanup of completed entries after retention period
+- **Retry** — configurable max retries with exhaustion detection
+- **Conflict Detection** — detects conflicting operations on same target (e.g., START vs STOP)
+- **Conflict Modes** — REJECT (enqueue fails), WAIT (queue delayed), ALLOW (proceed anyway)
+- **Idempotency** — duplicate request_id detection for idempotent operations
+- **Event/Audit Integration** — emits events, integrates with audit service
+- **Cleanup** — cleanup completed/expired entries, cleanup all
+
+**Security guarantees:**
+- Authorization recheck at dequeue time
+- Precondition recheck (target alive, capability available) at dequeue time
+- Fail-closed on missing registry or authorization service
+- No secret logging
+- Bounded resource usage
+
 ## Tests
 
 | Module | Tests |
@@ -61,7 +86,8 @@ Safe command routing through the Control Room pipeline:
 | Control Room | 89/89 |
 | Component Registry | 89/89 |
 | Command Router | 70/70 |
-| **Total** | **248/248** |
+| Operation Queue | 80/80 |
+| **Total** | **328/328** |
 
 ## Architecture Notes
 
@@ -69,3 +95,4 @@ Safe command routing through the Control Room pipeline:
 - `events.h` cannot be included in Section 04 headers (conflicts with `03_SECURITY/authorization.h`)
 - `-I03_SECURITY` is added per-file in Makefile rules, not in global CFLAGS
 - Command Router prefix: `ozayn_router_`
+- Operation Queue prefix: `ozayn_oq_`
