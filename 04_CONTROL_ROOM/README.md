@@ -105,6 +105,32 @@ Persistent, immutable historical records of completed operations, separate from 
 - Bounded resource usage
 - Deterministic retention (oldest expired first)
 
+### Step 07 — Diagnostics & Health Assessment (`diagnostics.h/.c`)
+Diagnostic request management, health assessments, and findings tracking:
+- **Diagnostic Requests** — 11-state lifecycle (CREATED → VALIDATING → RESOLVING → CHECKING → AUTHORIZING → EXECUTING → COLLECTING → ASSESSING → RECORDING → COMPLETED/FAILED/CANCELLED/TIMEOUT)
+- **Diagnostic Categories** — 10 categories (CONNECTIVITY, LIFECYCLE, CAPABILITY, DEPENDENCY, RESOURCE, SECURITY_INTEGRITY, PERFORMANCE, INTEGRATION, CONFIGURATION, STATE)
+- **Health Assessments** — per-component health state (HEALTHY, DEGRADED, UNHEALTHY, UNKNOWN, UNAVAILABLE) with change detection
+- **Findings** — diagnostic findings with severity, status tracking (OPEN → RESOLVED/ACKNOWLEDGED/INFORMATIONAL), evidence references
+- **Results** — diagnostic results with finding references, error details, health state per result
+- **Authorization** — integrates with Section 03 authorization for diagnostic operations
+- **Target Resolution** — resolves targets via Component Registry
+- **Dependency Handling** — tracks diagnostic dependencies between requests
+- **Concurrency Limits** — configurable max concurrent diagnostics
+- **Timeout** — configurable per-request timeout
+- **Query/Filter** — get by ID, count, filter by component/finding/result
+- **Statistics** — request counts, success/failure/cancel/timeout, health changes, active diagnostics
+- **Cleanup** — cleanup results, findings, all, with configurable retention
+- **Event Integration** — emits diagnostic events (REQUESTED, VALIDATING, EXECUTING, SUCCEEDED, FAILED, TIMEOUT, HEALTH_CHANGED, FINDING_OPENED, FINDING_RESOLVED)
+- **Audit Integration** — audit events for diagnostic operations
+- **Name Helpers** — string conversion for all enums
+
+**Security guarantees:**
+- No secret logging (context and metadata scrubbed)
+- Authorization via Section 03 (not bypassed)
+- Fail-closed on missing dependency services
+- No unbounded resource growth
+- Health assessments are immutable after creation
+
 ## Tests
 
 | Module | Tests |
@@ -114,7 +140,8 @@ Persistent, immutable historical records of completed operations, separate from 
 | Command Router | 70/70 |
 | Operation Queue | 80/80 |
 | Operation History | 85/85 |
-| **Total** | **413/413** |
+| Diagnostics | 68/68 |
+| **Total** | **481/481** |
 
 ## Architecture Notes
 
@@ -124,3 +151,4 @@ Persistent, immutable historical records of completed operations, separate from 
 - Command Router prefix: `ozayn_router_`
 - Operation Queue prefix: `ozayn_oq_`
 - Operation History prefix: `ozayn_oh_`
+- Diagnostics prefix: `ozayn_dha_`

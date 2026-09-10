@@ -121,6 +121,7 @@ extern int run_component_registry_tests(void);
 extern int run_command_router_tests(void);
 extern int run_operation_queue_tests(void);
 extern int run_operation_history_tests(void);
+extern int run_cr_diagnostics_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -260,6 +261,7 @@ int main(void) {
     suite_fail = run_command_router_tests();                suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_operation_queue_tests();              suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_operation_history_tests();            suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_cr_diagnostics_tests();               suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");
