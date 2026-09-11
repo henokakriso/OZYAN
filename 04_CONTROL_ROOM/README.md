@@ -131,6 +131,37 @@ Diagnostic request management, health assessments, and findings tracking:
 - No unbounded resource growth
 - Health assessments are immutable after creation
 
+### Step 08 — Safety, Preconditions & Policy Enforcement (`safety.h/.c`)
+Structured precondition evaluation, policy decisions, and safety checks before operation dispatch:
+- **Preconditions** — 12 categories (TARGET_STATE, TARGET_AVAILABILITY, TARGET_HEALTH, CAPABILITY, DEPENDENCY, AUTHORIZATION, SESSION, RESOURCE, CONFIGURATION, SECURITY, CONFLICT, LIFECYCLE)
+- **Precondition Results** — SATISFIED, FAILED, UNKNOWN, UNAVAILABLE, NOT_APPLICABLE
+- **Safety Levels** — SAFE, RESTRICTED, SENSITIVE, CRITICAL
+- **Policies** — structured operation policies with safety requirements, conflict rules, dependencies, resource requirements, timeout/retry limits
+- **Policy Decisions** — ALLOW, DENY, DEFER, UNAVAILABLE with decision records
+- **Conflict Detection** — policy-based conflict rules per target/action
+- **Authorization Integration** — real `ozayn_authz_authorize()` integration via Section 03
+- **Safety Recheck** — re-evaluates conditions before dispatch (TOCTOU protection)
+- **Decision Lifetime** — TTL-based expiry with validity checks
+- **Default Deny** — operations without matching policy are denied
+- **Fail Closed** — missing authorization service = deny
+- **Statistics** — evaluations, allowed/denied/deferred, precondition pass/fail, conflicts, rechecks
+- **Cleanup** — cleanup expired decisions, cleanup all
+- **Event Integration** — emits safety events (PRECOND_EVALUATED/FAILED, POLICY_EVALUATED/ALLOWED/DENIED, SAFETY_CHECK_STARTED/FAILED/PASSED, CONFLICT_DETECTED)
+- **Audit Integration** — audit events for safety decisions
+- **Validation** — precondition, policy, decision validation
+- **Name Helpers** — string conversion for all enums
+
+**Security guarantees:**
+- Fail closed when safety decisions cannot be established
+- Default deny unless explicitly allowed
+- No authorization bypass
+- No safety bypass
+- No arbitrary command/script execution
+- No unbounded dependency traversal
+- No unbounded retries
+- No secret logging
+- No unsafe fallback
+
 ## Tests
 
 | Module | Tests |
@@ -141,7 +172,8 @@ Diagnostic request management, health assessments, and findings tracking:
 | Operation Queue | 80/80 |
 | Operation History | 85/85 |
 | Diagnostics | 68/68 |
-| **Total** | **481/481** |
+| Safety & Policy | 80/80 |
+| **Total** | **561/561** |
 
 ## Architecture Notes
 
@@ -152,3 +184,4 @@ Diagnostic request management, health assessments, and findings tracking:
 - Operation Queue prefix: `ozayn_oq_`
 - Operation History prefix: `ozayn_oh_`
 - Diagnostics prefix: `ozayn_dha_`
+- Safety prefix: `ozayn_spe_`
