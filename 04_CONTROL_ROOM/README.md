@@ -162,6 +162,44 @@ Structured precondition evaluation, policy decisions, and safety checks before o
 - No secret logging
 - No unsafe fallback
 
+### Step 09 — Resource & Capacity Management (`resource.h/.c`)
+Resource tracking, capacity pools, reservation lifecycle, and allocation decisions:
+- **Resources** — 23 resource types (CPU, MEMORY, GPU, DISK, NETWORK, CAMERA, MICROPHONE, DISPLAY, AUDIO, USB, BLUETOOTH, SENSOR, STORAGE, INPUT_DEVICE, OUTPUT_DEVICE, PROCESSOR, THREAD, CACHE, BANDWIDTH, CONCURRENT_SESSION, RESERVATION_SLOT, PERMISSION_SLOT, EVENT_SLOT)
+- **Resource Pools** — capacity allocation, available tracking, overflow protection
+- **Reservations** — PENDING → CONFIRMED → ACTIVE → COMPLETED/FAILED/CANCELLED/EXPIRED lifecycle
+- **Allocation Decisions** — REQUESTED → CHECKING → APPROVED/DENIED/FAILED/EXPIRED
+- **Reservation Lifetime** — TTL-based expiry with automatic cleanup
+- **Cleanup** — cleanup expired reservations, cleanup all
+- **Statistics** — resources, reservations, allocations, capacity utilization
+- **Name Helpers** — string conversion for all enums
+
+### Step 10 — Device & I/O Management (`device_io.h/.c`)
+Device discovery, lifecycle, reservation, and capability management:
+- **Devices** — 13 device types (CAMERA, MICROPHONE, SPEAKER, HEADSET, KEYBOARD, MOUSE, TOUCHSCREEN, DISPLAY, PRINTER, SCANNER, GAMEPAD, WEBCAM, OTHER)
+- **Device States** — DISCOVERED → IDENTIFIED → AVAILABLE → RESERVED → IN_USE → BUSY → ERROR → DISABLED → OFFLINE → RECONNECTING → DISCONNECTED → REMOVED → UNKNOWN
+- **Capabilities** — 11 capability types (CAPTURE, STREAM, INPUT, OUTPUT, CONTROL, MONITOR, CONFIGURE, READ, WRITE, EXECUTE, TRANSFER)
+- **Reservations** — PENDING → CONFIRMED → ACTIVE → EXPIRED/CANCELLED/RELEASED/FAILED/CONFLICT
+- **Exclusive/Shared** — access modes with concurrent user tracking
+- **Provider Discovery** — callback-based device discovery from providers
+- **Disconnect/Reconnect** — device lifecycle management
+- **Statistics** — devices, reservations, capabilities, access patterns
+
+### Step 11 — Device Access Sessions & I/O Ownership (`device_session.h/.c`)
+Device access sessions with strict state machine, reservation binding, and privacy controls:
+- **Access Modes** — OBSERVE, INPUT, OUTPUT, CONTROL, STREAM
+- **Session States** — 13-state lifecycle (REQUESTED → AUTHORIZING → AUTHORIZED → RESERVED → OPENING → ACTIVE ↔ IDLE → CLOSING → CLOSED | EXPIRED | CANCELLED | FAILED | REVOKED)
+- **State Machine** — `_valid_transitions[][]` matrix for strict transition validation
+- **Reservation Binding** — sessions require reservation_id for RESERVE transition
+- **Security Binding** — sessions track security_session_ref, operation_id, required_permission
+- **Heartbeat** — activity tracking for ACTIVE and IDLE sessions
+- **Expiration** — TTL-based session expiry, checked at authorization time
+- **Revocation** — admin revocation with reason tracking
+- **Cleanup** — cleanup expired sessions, cleanup idle sessions, cleanup all
+- **Events** — ring buffer of session events with sequence numbers
+- **Privacy** — camera/mic sessions cannot auto-activate; no secrets in sessions or events
+- **Statistics** — created, authorized, opened, expired, revoked, cancelled, heartbeats, state transitions, validation failures
+- **Name Helpers** — string conversion for all enums
+
 ## Tests
 
 | Module | Tests |
@@ -175,7 +213,8 @@ Structured precondition evaluation, policy decisions, and safety checks before o
 | Safety & Policy | 80/80 |
 | Resource & Capacity | 102/102 |
 | Device & I/O | 89/89 |
-| **Total** | **752/752** |
+| Device Sessions | 66/66 |
+| **Total** | **818/818** |
 
 ## Architecture Notes
 
@@ -189,3 +228,4 @@ Structured precondition evaluation, policy decisions, and safety checks before o
 - Safety prefix: `ozayn_spe_`
 - Resource prefix: `ozayn_rcm_`
 - Device & I/O prefix: `ozayn_dio_`
+- Device Sessions prefix: `ozayn_das_`
