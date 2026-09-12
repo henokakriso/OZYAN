@@ -128,6 +128,7 @@ extern int run_cr_device_io_tests(void);
 extern int run_cr_device_session_tests(void);
 extern int run_cr_io_stream_tests(void);
 extern int run_cr_io_router_tests(void);
+extern int run_cr_pipeline_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -274,6 +275,7 @@ int main(void) {
     suite_fail = run_cr_device_session_tests();             suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_cr_io_stream_tests();                  suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_cr_io_router_tests();                  suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_cr_pipeline_tests();                  suite_pass = 100 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

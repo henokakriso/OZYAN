@@ -260,7 +260,8 @@ Routing layer connecting streams, endpoints, and controlled services through val
 | Device Sessions | 66/66 |
 | I/O Streams | 87/87 |
 | I/O Router | 94/94 |
-| **Total** | **999/999** |
+| Pipeline Coordinator | 115/115 |
+| **Total** | **1114/1114** |
 
 ## Architecture Notes
 
@@ -277,3 +278,26 @@ Routing layer connecting streams, endpoints, and controlled services through val
 - Device Sessions prefix: `ozayn_das_`
 - I/O Streams prefix: `ozayn_ios_`
 - I/O Router prefix: `ozayn_ior_`
+
+### Step 14 — I/O Pipeline Coordination & Flow Control (`pipeline.h/.c`)
+Pipeline coordination layer for managing multi-stage data-flow paths:
+- **Pipeline Types** — LINEAR, FAN_OUT, FAN_IN, COMPLEX
+- **Pipeline States** — 18-state lifecycle (CREATED → VALIDATING → AUTHORIZED → READY → STARTING → ACTIVE ↔ PAUSING ↔ PAUSED ↔ RESUMING → DRAINING → STOPPING → STOPPED | FAILED | DEGRADED | EXPIRED | REVOKED | UNAVAILABLE | CANCELLED)
+- **State Machine** — `_pipeline_transitions[][]` matrix for strict transition validation
+- **Stage Types** — SOURCE, ROUTE, BUFFER, SYNC, TRANSFORM_BOUNDARY, DESTINATION
+- **Stage States** — 10-state lifecycle (CREATED → VALIDATING → READY → STARTING → ACTIVE ↔ PAUSED → DRAINING → COMPLETED | FAILED | UNAVAILABLE)
+- **Stage State Machine** — `_stage_transitions[][]` matrix
+- **Graph Edges** — explicit stage-to-stage connections with route/stream references, directions, data types, flow policies
+- **Graph Validation** — cycle detection (DFS), self-loop prevention, stage existence checks
+- **Flow Control** — NORMAL, THROTTLED, BACKPRESSURED, DRAINING, BLOCKED, FAILED states
+- **Synchronization** — stage dependency checking, readiness validation, sequence advancement
+- **Fan-out/Fan-in** — configurable max fan-out and fan-in per stage, explicit edge declarations
+- **Health Propagation** — tracks healthy/degraded/failed stage counts, required vs optional stages
+- **Events** — ring buffer of 37 event types with correlation identifiers
+- **Cleanup** — cleanup expired, stopped pipelines, cleanup all
+- **Statistics** — pipelines created/authorized/started/active/paused/stopped/expired/revoked/failed, stages, edges, transitions, sync timeouts, backpressure
+- **Close Reasons** — 18 reasons (manual stop, drain complete/timeout, route/stream/device/resource failures, authorization, safety, timeout, shutdown, stage failure, graph error, concurrent)
+- **Name Helpers** — string conversion for all enums
+- **Privacy** — no secrets in pipelines, stages, edges, or events
+
+> The Pipeline Coordinator coordinates authorized data-flow paths. It does not interpret, analyze, recognize, classify, or make intelligent decisions about the payload.
