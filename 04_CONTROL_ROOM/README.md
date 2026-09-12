@@ -200,6 +200,29 @@ Device access sessions with strict state machine, reservation binding, and priva
 - **Statistics** — created, authorized, opened, expired, revoked, cancelled, heartbeats, state transitions, validation failures
 - **Name Helpers** — string conversion for all enums
 
+### Step 12 — I/O Stream Management & Data Flow (`io_stream.h/.c`)
+Controlled abstraction for moving data between authorized device sessions and OZAYN subsystems:
+- **Stream Directions** — INPUT, OUTPUT, BIDIRECTIONAL
+- **Data Types** — 8 types (CAMERA_FRAME, AUDIO_SAMPLE, AUDIO_BUFFER, INPUT_EVENT, DISPLAY_OUTPUT, GPU_BUFFER, NETWORK_DATA, GENERIC_SAFE)
+- **Stream States** — 14-state lifecycle (REQUESTED → AUTHORIZING → AUTHORIZED → OPENING → ACTIVE ↔ PAUSED ↔ BACKPRESSURED → DRAINING → CLOSING → CLOSED | FAILED | EXPIRED | REVOKED | UNAVAILABLE)
+- **State Machine** — `_valid_transitions[][]` matrix for strict transition validation
+- **Buffer Policies** — BLOCK, DROP_OLDEST, DROP_NEWEST, PAUSE_PRODUCER, FAIL_STREAM
+- **Data Flow** — push_data/pull_data with bounded buffering, queue depth limits, data size limits
+- **Backpressure** — automatic detection when buffer nears limit, defined policy per stream
+- **Overflow Protection** — bounded queue depth, configurable drop policies, fail-stream on overflow
+- **Rate Limiting** — configurable max data rate per stream
+- **Producer/Consumer** — attach/detach with state validation
+- **Device Disconnect** — safe handling with reconnection support (UNAVAILABLE state)
+- **Session Binding** — streams tied to device access sessions, session change tracking
+- **Cleanup** — cleanup expired, idle, and closed streams
+- **Events** — ring buffer of 19 event types with correlation identifiers
+- **Statistics** — created, authorized, opened, paused, closed, expired, revoked, data units, backpressure, overflow, rate limits
+- **Privacy** — no secrets in streams or events, no silent camera/mic activation
+- **Close Reasons** — 15 reasons (manual, session expired/revoked, device unavailable/disconnected, policy, resource, buffer, rate, timeout, shutdown, provider, open failed, concurrent)
+- **Name Helpers** — string conversion for all enums
+
+> Control Room manages controlled I/O flow infrastructure. It does not implement vision, speech recognition, gesture recognition, AI processing, recording, or biometric analysis.
+
 ## Tests
 
 | Module | Tests |
@@ -214,7 +237,8 @@ Device access sessions with strict state machine, reservation binding, and priva
 | Resource & Capacity | 102/102 |
 | Device & I/O | 89/89 |
 | Device Sessions | 66/66 |
-| **Total** | **818/818** |
+| I/O Streams | 87/87 |
+| **Total** | **905/905** |
 
 ## Architecture Notes
 
@@ -229,3 +253,4 @@ Device access sessions with strict state machine, reservation binding, and priva
 - Resource prefix: `ozayn_rcm_`
 - Device & I/O prefix: `ozayn_dio_`
 - Device Sessions prefix: `ozayn_das_`
+- I/O Streams prefix: `ozayn_ios_`
