@@ -223,6 +223,27 @@ Controlled abstraction for moving data between authorized device sessions and OZ
 
 > Control Room manages controlled I/O flow infrastructure. It does not implement vision, speech recognition, gesture recognition, AI processing, recording, or biometric analysis.
 
+### Step 13 — I/O Routing & Stream Pipeline Foundation (`io_router.h/.c`)
+Routing layer connecting streams, endpoints, and controlled services through validated paths:
+- **Endpoint Types** — 7 types (DEVICE, DEVICE_SESSION, STREAM, CORE_COMPONENT, MODULE, TASK, CONTROLLED_SERVICE)
+- **Route Modes** — ONE_TO_ONE, ONE_TO_MANY
+- **Route States** — 14-state lifecycle (REQUESTED → VALIDATING → AUTHORIZED → WAITING → CONNECTING → ACTIVE ↔ PAUSED ↔ BACKPRESSURED → DISCONNECTING → CLOSED | FAILED | EXPIRED | REVOKED | UNAVAILABLE)
+- **State Machine** — `_valid_transitions[][]` matrix for strict transition validation
+- **Endpoint Registration** — register/unregister/query endpoints with availability and health tracking
+- **Route Creation** — validation pipeline (stream, source, destination, type, mode, requester)
+- **Authorization** — source/destination endpoint existence checks, loop detection, expiry check
+- **Connection** — WAITING → CONNECTING → ACTIVE transition sequence
+- **Lifecycle Operations** — activate, pause, resume, disconnect, close, revoke, remove
+- **Loop Detection** — bounded graph traversal to prevent routing cycles
+- **Stream/Device Change Propagation** — stream closed and device disconnect affect all related routes
+- **Events** — ring buffer of 18 event types with correlation identifiers
+- **Cleanup** — cleanup expired, idle, and closed routes
+- **Statistics** — created, authorized, active, paused, closed, expired, revoked, failed, loops, transitions, validation failures
+- **Validation** — route, request, and state transition validation
+- **Close Reasons** — 17 reasons (manual, stream/device/session closed/expired/revoked, endpoint unavailable, policy, resource, buffer, rate, timeout, shutdown, loop, concurrent)
+- **Name Helpers** — string conversion for all enums
+- **Privacy** — no secrets in routes or events, no silent activation
+
 ## Tests
 
 | Module | Tests |
@@ -238,7 +259,8 @@ Controlled abstraction for moving data between authorized device sessions and OZ
 | Device & I/O | 89/89 |
 | Device Sessions | 66/66 |
 | I/O Streams | 87/87 |
-| **Total** | **905/905** |
+| I/O Router | 94/94 |
+| **Total** | **999/999** |
 
 ## Architecture Notes
 
@@ -254,3 +276,4 @@ Controlled abstraction for moving data between authorized device sessions and OZ
 - Device & I/O prefix: `ozayn_dio_`
 - Device Sessions prefix: `ozayn_das_`
 - I/O Streams prefix: `ozayn_ios_`
+- I/O Router prefix: `ozayn_ior_`
