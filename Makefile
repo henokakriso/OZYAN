@@ -49,7 +49,7 @@ SEC_OBJ = $(BUILD)/03_SECURITY/data_classification.o $(BUILD)/03_SECURITY/secure
 OBJS    += $(SEC_OBJ)
 
 # Control Room (Section 04)
-CR_OBJ = $(BUILD)/04_CONTROL_ROOM/control_room.o $(BUILD)/04_CONTROL_ROOM/component_registry.o $(BUILD)/04_CONTROL_ROOM/command_router.o $(BUILD)/04_CONTROL_ROOM/operation_queue.o $(BUILD)/04_CONTROL_ROOM/operation_history.o $(BUILD)/04_CONTROL_ROOM/diagnostics.o $(BUILD)/04_CONTROL_ROOM/safety.o $(BUILD)/04_CONTROL_ROOM/resource.o
+CR_OBJ = $(BUILD)/04_CONTROL_ROOM/control_room.o $(BUILD)/04_CONTROL_ROOM/component_registry.o $(BUILD)/04_CONTROL_ROOM/command_router.o $(BUILD)/04_CONTROL_ROOM/operation_queue.o $(BUILD)/04_CONTROL_ROOM/operation_history.o $(BUILD)/04_CONTROL_ROOM/diagnostics.o $(BUILD)/04_CONTROL_ROOM/safety.o $(BUILD)/04_CONTROL_ROOM/resource.o $(BUILD)/04_CONTROL_ROOM/device_io.o
 OBJS    += $(CR_OBJ)
 
 PLUGIN_DIR  = plugins

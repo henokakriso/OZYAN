@@ -173,7 +173,9 @@ Structured precondition evaluation, policy decisions, and safety checks before o
 | Operation History | 85/85 |
 | Diagnostics | 68/68 |
 | Safety & Policy | 80/80 |
-| **Total** | **561/561** |
+| Resource & Capacity | 102/102 |
+| Device & I/O | 89/89 |
+| **Total** | **752/752** |
 
 ## Architecture Notes
 
@@ -185,3 +187,5 @@ Structured precondition evaluation, policy decisions, and safety checks before o
 - Operation History prefix: `ozayn_oh_`
 - Diagnostics prefix: `ozayn_dha_`
 - Safety prefix: `ozayn_spe_`
+- Resource prefix: `ozayn_rcm_`
+- Device & I/O prefix: `ozayn_dio_`
