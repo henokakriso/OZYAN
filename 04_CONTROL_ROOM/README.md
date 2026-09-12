@@ -301,3 +301,30 @@ Pipeline coordination layer for managing multi-stage data-flow paths:
 - **Privacy** — no secrets in pipelines, stages, edges, or events
 
 > The Pipeline Coordinator coordinates authorized data-flow paths. It does not interpret, analyze, recognize, classify, or make intelligent decisions about the payload.
+
+### Step 15 — Pipeline Scheduling & Arbitration Foundation (`pipeline_scheduler.h/.c`)
+Determines which ready pipeline may proceed when multiple pipelines compete for shared resources:
+- **Scheduling States** — 16-state lifecycle (CREATED → QUEUED → WAITING → ELIGIBLE → SCHEDULED → RESERVED → STARTING → RUNNING ↔ PAUSED → DRAINING → COMPLETED | FAILED | CANCELLED | EXPIRED | REJECTED | UNAVAILABLE)
+- **State Machine** — `_transitions[][]` matrix for strict transition validation
+- **Priority** — 4 levels (LOW, NORMAL, HIGH, CRITICAL) integrated with existing OQ priority model
+- **Fairness** — bounded priority aging prevents starvation (configurable aging interval and max boost)
+- **Deadlines** — optional scheduling deadlines, max wait time, entry TTL with automatic expiration
+- **Readiness Evaluation** — pipeline validity, authorization, safety, dependencies, concurrency
+- **Resource Arbitration** — priority-based selection with FIFO tie-breaking for same-priority entries
+- **Conflict Detection** — device, stream, and route conflict detection across active pipelines
+- **Dependency-Aware Scheduling** — cycle detection (DFS), bounded dependency chains, dependency readiness tracking
+- **Concurrency Limits** — configurable max running, max waiting, max scheduled pipelines
+- **Reservation Coordination** — deterministic reservation ordering to prevent deadlocks
+- **Atomic Scheduling** — CHECK → ARBITRATE → RESERVE → SCHEDULE flow
+- **Event-Driven Wakeup** — tick-based evaluation with configurable interval, 27 event types
+- **Cancellation** — controlled cancellation with authorization, reservation release, event emission
+- **Scheduling Decisions** — structured decisions (SCHEDULE, WAIT, DEFER, REJECT, EXPIRE, UNAVAILABLE) with full context
+- **Observability** — queue capacity, utilization, running/waiting/blocked counts, fairness adjustments
+- **Events** — ring buffer of 27 event types with correlation identifiers
+- **Cleanup** — cleanup expired, terminal, or all entries
+- **Statistics** — submitted, scheduled, completed, failed, cancelled, expired, rejected, fairness adjustments, resource/pipeline conflicts
+- **Close Reasons** — 16 reasons (manual cancel, deadline expired, resource exhausted, device/stream/route failures, authorization, safety, policy, dependency, conflict, concurrency, timeout, shutdown)
+- **Name Helpers** — string conversion for all enums
+- **Privacy** — no secrets in scheduling records or events
+
+> The Pipeline Scheduler decides when authorized pipelines may proceed. It does not grant authorization, override safety policy, or execute arbitrary commands.
