@@ -328,3 +328,30 @@ Determines which ready pipeline may proceed when multiple pipelines compete for 
 - **Privacy** — no secrets in scheduling records or events
 
 > The Pipeline Scheduler decides when authorized pipelines may proceed. It does not grant authorization, override safety policy, or execute arbitrary commands.
+
+### Step 16 — Workflow & Multi-Pipeline Orchestration Foundation (`workflow_orchestrator.h/.c`)
+Orchestration layer for coordinating multiple authorized operations and pipelines as one bounded, observable workflow:
+- **Workflow Types** — SEQUENTIAL, PARALLEL, BOUNDED_PARALLEL
+- **Workflow States** — 22-state lifecycle (CREATED → VALIDATING → AUTHORIZED → WAITING → READY → SCHEDULED → STARTING → ACTIVE ↔ PAUSING ↔ PAUSED ↔ RESUMING → DRAINING → STOPPING → SUCCEEDED | FAILED | PARTIALLY_SUCCEEDED | CANCELLED | TIMEOUT | EXPIRED | REVOKED | REJECTED | UNAVAILABLE)
+- **Workflow State Machine** — `_wf_transitions[][]` matrix for strict transition validation
+- **Stage Types** — PIPELINE, OPERATION, WAIT, CONDITION, GROUP
+- **Stage States** — 15-state lifecycle (CREATED → WAITING_DEPS → DEPS_SATISFIED → ELIGIBLE → SUBMITTED → SCHEDULED → RUNNING ↔ PAUSED → COMPLETED | FAILED | SKIPPED | CANCELLED | TIMED_OUT | BLOCKED)
+- **Stage State Machine** — `_stg_transitions[][]` matrix
+- **Condition Types** — RESOURCE_AVAILABLE, DEVICE_AVAILABLE, PIPELINE_COMPLETED, PIPELINE_FAILED, HEALTH_STATE, CAPABILITY_STATE, OPERATION_RESULT (structured, no arbitrary scripting)
+- **Failure Policies** — FAIL_WORKFLOW, SKIP_DEPENDENTS, CONTINUE_INDEPENDENT, MARK_PARTIAL
+- **Compensation Foundation** — data model for NOTIFY, REVERSE_OPERATION, RUN_COMPENSATION_PIPELINE (validation → authorization → safety → resource → revalidation → schedule → execute chain)
+- **Dependency Graph** — explicit stage-to-stage dependencies with DFS cycle detection, bounded traversal depth
+- **Tick-Based Orchestration** — evaluates stage readiness, dependency satisfaction, timeouts, workflow completion
+- **Concurrency Policies** — SEQUENTIAL, PARALLEL, BOUNDED (with configurable max concurrent stages)
+- **Timeout Management** — workflow-level and stage-level timeouts, start deadlines, execution deadlines
+- **Cancellation** — controlled cancellation with stage cleanup and resource release
+- **Events** — ring buffer of 27 event types with correlation (workflow, stage, pipeline, operation IDs)
+- **Observability** — workflow/stage counts, concurrent tracking, dependency queries, state queries
+- **Cleanup** — cleanup terminal workflows, expired workflows, full cleanup
+- **Statistics** — workflows created/validated/authorized/started/succeeded/failed/cancelled/expired, stages, dependencies, transitions, events, retries, fairness
+- **Close Reasons** — 16 reasons (manual cancel, dependency/pipeline failures, resource exhaustion, device unavailable, auth revoked, safety/policy denied, timeout, deadline, conflict, concurrency limit, session expired, shutdown, orchestration error, partial completion)
+- **Name Helpers** — string conversion for all enums
+- **Privacy** — no secrets in workflow metadata, stage data, or events
+- **Security** — no arbitrary code/script/shell execution, no bypass flags, fail-closed, default-deny
+
+> The Workflow Orchestrator coordinates existing authorized operations and pipelines. It does not execute arbitrary code, scripts, shell commands, or autonomous actions.
