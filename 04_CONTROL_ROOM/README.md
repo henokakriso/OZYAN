@@ -261,7 +261,10 @@ Routing layer connecting streams, endpoints, and controlled services through val
 | I/O Streams | 87/87 |
 | I/O Router | 94/94 |
 | Pipeline Coordinator | 115/115 |
-| **Total** | **1114/1114** |
+| Pipeline Scheduler | 113/113 |
+| Workflow Orchestrator | 95/95 |
+| Workflow Recovery | 108/108 |
+| **Total** | **1430/1430** |
 
 ## Architecture Notes
 
@@ -278,6 +281,10 @@ Routing layer connecting streams, endpoints, and controlled services through val
 - Device Sessions prefix: `ozayn_das_`
 - I/O Streams prefix: `ozayn_ios_`
 - I/O Router prefix: `ozayn_ior_`
+- Pipeline Coordinator prefix: `ozayn_pco_`
+- Pipeline Scheduler prefix: `ozayn_spa_`
+- Workflow Orchestrator prefix: `ozayn_wof_`
+- Workflow Recovery prefix: `ozayn_wfr_`
 
 ### Step 14 — I/O Pipeline Coordination & Flow Control (`pipeline.h/.c`)
 Pipeline coordination layer for managing multi-stage data-flow paths:
@@ -355,3 +362,34 @@ Orchestration layer for coordinating multiple authorized operations and pipeline
 - **Security** — no arbitrary code/script/shell execution, no bypass flags, fail-closed, default-deny
 
 > The Workflow Orchestrator coordinates existing authorized operations and pipelines. It does not execute arbitrary code, scripts, shell commands, or autonomous actions.
+
+### Step 17 — Workflow Recovery & Failure Management Foundation (`workflow_recovery.h/.c`)
+Failure detection, classification, containment, recovery decisions, and lifecycle management:
+- **Error Codes** — 29 codes (OK through compensation limit/unsupported)
+- **Failure Categories** — 19 (PIPELINE, RESOURCE, DEVICE, AUTHORIZATION, VALIDATION, TIMEOUT, NETWORK, INTERNAL, SECURITY, CONCURRENCY, CONFIGURATION, DEPENDENCY, STATE, CAPACITY, ENVIRONMENT, DATA, LOGIC, EXTERNAL, UNKNOWN)
+- **Severity Levels** — 5 (INFO, LOW, MEDIUM, HIGH, CRITICAL)
+- **Failure States** — 11-state lifecycle (DETECTED → CLASSIFIED → ASSESSING → CONTAINING → RECOVERING → RECOVERED | PARTIALLY_RECOVERED | UNRECOVERABLE | ESCALATED | ACKNOWLEDGED | CLOSED)
+- **Failure State Machine** — `_failure_transitions[][]` matrix for strict transition validation
+- **Recovery Decisions** — 9 types (CONTINUE, RETRY, PAUSE, CANCEL, FAIL_WORKFLOW, PARTIAL_CONTINUE, COMPENSATE, ESCALATE, UNAVAILABLE)
+- **Impact Levels** — 6 (STAGE_ONLY, DEPENDENT_STAGES, WORKFLOW, RELATED_RESOURCE, RELATED_DEVICE, RELATED_PIPELINES)
+- **Containment Actions** — 10 (STOP_DISPATCH, PAUSE_PIPELINE, CANCEL_PIPELINE, ISOLATE_DEVICE, ISOLATE_RESOURCE, BLOCK_DEPENDENTS, NOTIFY_ADMIN, NOTIFY_USER, LOG_ONLY, CUSTOM)
+- **Idempotency Types** — 4 (NON_IDEMPOTENT, IDEMPOTENT, SAFE_REPEAT, UNKNOWN)
+- **Backoff Strategies** — 3 (IMMEDIATE, FIXED_DELAY, BOUNDED_EXPONENTIAL)
+- **Recovery States** — 5 (NONE, RECOVERING, COMPENSATING, ESCALATED, UNRECOVERABLE)
+- **Failure Recording** — records with correlation IDs (workflow, stage, operation, pipeline, request, source component)
+- **Auto-Classification** — tick-based auto-classification for unclassified failures
+- **Auto-Escalation** — critical failures auto-escalate on retry failure
+- **Auto-Recovery** — timeout failures auto-recover on tick
+- **Recovery Decisions** — structured decisions with authorization/safety references, preconditions, expiration
+- **Authorization Integration** — decision authorization with authorization_ref and safety_ref
+- **Retry Evaluation** — idempotency-aware retry decisions with backoff computation
+- **Compensation Evaluation** — category-based compensability assessment
+- **Tick-Based Processing** — auto-classify, auto-escalate, auto-recover, expire decisions
+- **Events** — ring buffer of 18 event types with correlation identifiers
+- **Cleanup** — cleanup closed failures, full cleanup, expire decisions
+- **Statistics** — failures detected/classified/contained/recovered, recovery attempts/successes, compensation, escalation, events
+- **Validation** — failure records, decisions, configs, state transitions
+- **Name Helpers** — string conversion for all enums
+- **Privacy** — no secrets in failure records, decisions, or events
+
+> The Workflow Recovery system classifies and recovers from failures in authorized operations and pipelines. It does not execute arbitrary code, override authorization, or bypass safety controls.
