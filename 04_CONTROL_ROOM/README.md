@@ -457,3 +457,45 @@ Failure detection, classification, containment, recovery decisions, and lifecycl
 - **Privacy** — no secrets in checkpoint IDs, journal entries, or events
 
 > The Persistent Workflow Recovery State system maintains checkpoint integrity across restarts, detects and reconciles interrupted workflows, and determines recovery eligibility. It does not perform automatic workflow resume — that responsibility lies with the orchestrator and execution engine.
+
+### Step 19 — Startup Recovery & System Reconciliation Orchestration (startup_recovery.h/.c)
+
+**Prefix:** `ozayn_src_` | **Header:** `startup_recovery.h` | **Implementation:** `startup_recovery.c` | **Tests:** `tests/test_startup_recovery.c` (119 tests)
+
+The Startup Recovery Coordinator orchestrates system startup through a phased pipeline. It detects startup cause, validates prerequisites, reconciles system state, and makes startup completion decisions.
+
+**Error codes (28):** `OZAYN_SRC_ERR_*`
+
+**Startup phases (10):**
+| Phase | Description |
+|-------|-------------|
+| `BOOTSTRAP` | Detect startup cause, initialize context |
+| `CORE` | Validate lifecycle and dependency managers |
+| `INFRASTRUCTURE` | Check diagnostics, safety, state, events |
+| `DISCOVERY` | Discover components and capabilities |
+| `DEPENDENCY_VALIDATION` | Validate component dependency graph |
+| `STATE_RECONCILIATION` | Reconcile component states |
+| `RESOURCE_RECONCILIATION` | Reconcile resource allocation |
+| `DEVICE_RECONCILIATION` | Reconcile device sessions |
+| `SECURITY_REVALIDATION` | Revalidate security subsystem |
+| `RECOVERY_ASSESSMENT` | Assess recovery needs from checkpoints |
+
+**Startup states:** `IDLE → STARTING → RUNNING | STOPPING → STOPPED | FAILED`
+
+**Startup decisions:** `UNKNOWN`, `READY`, `READY_DEGRADED`, `BLOCKED`, `FAILED`, `MANUAL_REVIEW_REQUIRED`, `RECOVERY_REQUIRED`
+
+**Key APIs:**
+- `ozayn_src_startup(svc)` — Run full startup orchestration
+- `ozayn_src_shutdown(svc)` — Graceful shutdown
+- `ozayn_src_startup_phase(svc, phase)` — Run individual phase
+- `ozayn_src_determine_decision(svc)` — Determine final startup decision
+- `ozayn_src_detect_startup_cause(svc, ...)` — Detect cause from system state
+- `ozayn_src_reconcile_components(svc)` — Reconcile component states
+- `ozayn_src_reconcile_capabilities(svc)` — Reconcile capability states
+- `ozayn_src_reconcile_resources(svc)` — Reconcile resource allocation
+- `ozayn_src_revalidate_security(svc)` — Revalidate security
+- `ozayn_src_assess_recovery(svc)` — Assess recovery needs
+
+**Dependency injection (11 subsystems):** lifecycle, dependency, component_registry, resource_manager, device_session, safety, diagnostics, workflow_recovery, workflow_checkpoint, state_manager, events_engine
+
+> The Startup Recovery Coordinator is a thin orchestration layer. It determines what needs recovery but does NOT automatically resume workflows. Optional subsystems (lifecycle, dependency, safety, diagnostics, etc.) are not required for startup — the system starts in READY mode regardless. Warnings are only emitted when actual inconsistencies or failures are detected, not when optional subsystems are simply unbound.
