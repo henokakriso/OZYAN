@@ -393,3 +393,67 @@ Failure detection, classification, containment, recovery decisions, and lifecycl
 - **Privacy** — no secrets in failure records, decisions, or events
 
 > The Workflow Recovery system classifies and recovers from failures in authorized operations and pipelines. It does not execute arbitrary code, override authorization, or bypass safety controls.
+
+---
+
+### Step 18 — Persistent Workflow Recovery State (workflow_checkpoint.h/.c)
+
+**Prefix:** `ozayn_prs_` (Persistent Recovery State)
+
+**Purpose:** Maintain persistent checkpoint state for workflow recovery across restarts, provide restart detection and reconciliation logic, and determine recovery eligibility — without performing the actual resume (that is left to the orchestrator).
+
+**Error Codes** — 30: OK through MAX_REFERENCES
+
+**Checkpoint States** — 9: CREATED → VALIDATING → COMMITTED → RECOVERY_REQUIRED → RECOVERING → RECOVERED | SUPERSEDED | INVALID | CORRUPTED
+
+**Recovery Eligibility** — 11: ELIGIBLE, INELIGIBLE, RECOVERY_EXPIRED, RECOVERY_UNAVAILABLE, RECOVERY_CORRUPTED, RECOVERY_DUPLICATE_RISK, REQUIRES_REAUTHORIZATION, REQUIRES_SAFETY_RECHECK, REQUIRES_RESOURCE_RECHECK, REQUIRES_DEVICE_RECHECK, REQUIRES_REEVALUATION
+
+**Reconciliation States** — 5: PENDING, IN_PROGRESS, COMPLETED, FAILED, BLOCKED
+
+**Verdict Types** — 9: COMPLETED, INTERRUPTED, RECOVERY_REQUIRED, NO_RECOVERY_NEEDED, INCOMPATIBLE, EXPIRED, BLOCKED, DUPLICATE_RISK, FAILED
+
+**Journal Event Types** — 16: CHECKPOINT_CREATED through CLEANUP
+
+**Stage Reconciliation Results** — 5: COMPLETED, INTERRUPTED, UNKNOWN, INCOMPATIBLE, REQUIRES_REEVALUATION
+
+**Operation Reconciliation Results** — 5: COMPLETED, INTERRUPTED, DUPLICATE_RISK, UNKNOWN, INCOMPATIBLE
+
+**Event Types** — 18: CHECKPOINT_CREATED through CLEANUP_COMPLETED
+
+**Key Structs:**
+- `ozayn_prs_checkpoint_t` — checkpoint record with state machine, references, expiration, workflow metadata
+- `ozayn_prs_journal_entry_t` — journal entry with workflow/stage/operation/pipeline/failure correlation
+- `ozayn_prs_reconciliation_t` — reconciliation with per-stage and per-operation results
+- `ozayn_prs_event_t` — event record with type, correlation, description, metadata
+- `ozayn_prs_service_state_t` — service with checkpoint/journal/reconciliation arrays, restart time, duplicate protection
+
+**Key Functions:**
+- **Lifecycle** — init, shutdown, is_initialized, get_global
+- **Checkpoint CRUD** — create, get, get_latest_valid, get_by_workflow, count, is_valid, is_expired
+- **Checkpoint State Machine** — validate → commit → supersede/invalidate/mark_recovered
+- **References** — add failure/resource/device references with overflow protection
+- **Journal** — write, get, get_latest_for_workflow, count, cleanup_old (ring buffer)
+- **Restart Detection** — detect_restart (marks committed checkpoints as recovery-required)
+- **Reconciliation** — reconcile_workflow, get, count, advance
+- **Eligibility** — assess_eligibility (13 parameters: schema, expiration, auth, safety, resources, devices, sessions, duplicate risk)
+- **Duplicate Protection** — check_duplicate_execution, record_execution_attempt
+- **Retention** — enforce retention, cleanup expired, cleanup all
+- **Tick** — periodic maintenance
+- **Events** — emit, get, count (ring buffer)
+- **Statistics** — get, reset
+- **Validation** — checkpoint, config, state transitions
+- **Name Helpers** — all enums to strings
+
+**Design Constraints:**
+- **No automatic resume** — determines eligibility only, does not restart workflows
+- **Schema versioning** — tracks compatibility for safe migration
+- **Idempotent operations** — checkpoint create, journal write, eligibility assessment
+- **Ring buffer** — journal and event buffers overwrite oldest entries when full
+- **Checkpoint supersede** — old committed checkpoints are superseded on new commit
+- **Recovery-required state** — detect_restart marks committed checkpoints for recovery
+- **Reconciliation verdicts** — INTERRUPTED (not running), RECOVERY_REQUIRED (running), COMPLETED, INCOMPATIBLE, etc.
+- **Duplicate execution protection** — tracks operation execution attempts to prevent double-runs
+- **Expiration** — checkpoints can expire based on max_checkpoint_age_seconds config
+- **Privacy** — no secrets in checkpoint IDs, journal entries, or events
+
+> The Persistent Workflow Recovery State system maintains checkpoint integrity across restarts, detects and reconciles interrupted workflows, and determines recovery eligibility. It does not perform automatic workflow resume — that responsibility lies with the orchestrator and execution engine.
