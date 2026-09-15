@@ -535,3 +535,39 @@ The Operational Readiness Engine determines whether OZAYN is suitable for contro
 **Dependency injection (9 subsystems):** component_registry, resource_manager, device_session, safety, diagnostics, startup_recovery, workflow_recovery, workflow_checkpoint, audit
 
 > Operational Readiness determines whether OZAYN is currently suitable for controlled operation. It does not replace authorization, safety policy, resource management, device ownership, diagnostics, recovery, or scheduling. It aggregates and evaluates their state to make mode decisions.
+
+### Step 21 — Operational Mode Transition & Policy Engine Foundation (mode_transition_policy.h/.c)
+
+**Prefix:** `ozayn_mtp_` | **Header:** `mode_transition_policy.h` | **Implementation:** `mode_transition_policy.c` | **Tests:** `tests/test_mode_transition_policy.c` (99 tests)
+
+The Mode Transition Policy Engine provides a structured evaluation layer on top of the Operational Readiness Engine's basic transition system. It evaluates mode transition requests against explicit policies, security/safety/resource subsystems, and conflict detection to produce structured transition decisions.
+
+**Decision outcomes (9):** `ALLOW`, `DENY`, `DEFER`, `REQUIRES_REASSESSMENT`, `REQUIRES_AUTHORIZATION`, `REQUIRES_SAFETY_CHECK`, `REQUIRES_RESOURCE_CHECK`, `MANUAL_REVIEW`, `UNAVAILABLE`
+
+**Transition phases (12):** `NONE`, `REQUESTED`, `VALIDATING`, `EVALUATING`, `DECIDED`, `EXECUTING`, `VERIFYING`, `COMPLETED`, `REJECTED`, `FAILED`, `CANCELLED`, `EXPIRED`
+
+**Trigger types (13):** `NONE`, `STARTUP`, `SHUTDOWN`, `HEALTH_CHANGE`, `SECURITY_CHANGE`, `RESOURCE_CHANGE`, `DEVICE_CHANGE`, `RECOVERY`, `MAINTENANCE_REQUEST`, `ADMINISTRATIVE`, `SYSTEM_FAILURE`, `SAFETY_EVENT`, `CONFIGURATION_CHANGE`
+
+**Event types (15):** `EVALUATION_STARTED`, `EVALUATION_COMPLETED`, `TRANSITION_APPROVED`, `TRANSITION_DENIED`, `TRANSITION_DEFERRED`, `POLICY_ADDED`, `POLICY_REMOVED`, `POLICY_ENABLED`, `POLICY_DISABLED`, `REQUEST_EXPIRED`, `CONFLICT_DETECTED`, `TRANSITION_EXECUTING`, `TRANSITION_COMPLETED`, `TRANSITION_FAILED`, `COUNT`
+
+**Evaluation pipeline:**
+1. Validate transition exists in the matrix (from Step 20)
+2. Check for active transition conflicts
+3. Find matching policy for source → target
+4. Evaluate policy conditions (security, safety, resources, readiness)
+5. Produce structured decision (ALLOW, DENY, DEFER, etc.)
+6. Store decision and request in ring buffers
+7. Emit events
+
+**Key APIs:**
+- `ozayn_mtp_service_init/shutdown(svc, cfg)` — Lifecycle
+- `ozayn_mtp_evaluate(svc, source, target, trigger, reason, requester, out)` — Full evaluation
+- `ozayn_mtp_can_transition(svc, source, target)` — Quick boolean check
+- `ozayn_mtp_add/remove/enable_policy(svc, ...)` — Policy management
+- `ozayn_mtp_get_decision/request/event(svc, ...)` — Query stored records
+- `ozayn_mtp_get_stats(svc)` — Evaluation statistics
+- `ozayn_mtp_err_name/outcome_name/phase_name/trigger_name/event_type_name()` — Name helpers
+
+**Dependency injection (5 subsystems):** readiness (Step 20), audit (Section 03), safety, resource_manager, component_registry
+
+> The Mode Transition Policy Engine evaluates and decides on mode transitions. It does not directly modify the operational readiness mode — the caller must apply the decision using the Operational Readiness Engine's transition function.
