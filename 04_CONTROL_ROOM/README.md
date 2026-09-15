@@ -244,6 +244,68 @@ Routing layer connecting streams, endpoints, and controlled services through val
 - **Name Helpers** — string conversion for all enums
 - **Privacy** — no secrets in routes or events, no silent activation
 
+### Step 22 — Runtime Operation Admission & Control Gate (runtime_admission_gate.h/.c)
+
+**Prefix:** `ozayn_rag_` | **Header:** `runtime_admission_gate.h` | **Implementation:** `runtime_admission_gate.c` | **Tests:** `tests/test_runtime_admission_gate.c` (84 tests)
+
+The Runtime Operation Admission & Control Gate is the decision and enforcement boundary between the scheduler/workflow/pipeline and actual execution. It coordinates all subsystem checks into a single admission decision per operation request.
+
+**Error codes (35):** `OZAYN_RAG_ERR_*`
+
+**Decision outcomes (13):**
+| Decision | Description |
+|----------|-------------|
+| `ACCEPT` | Operation admitted for execution |
+| `QUEUE` | Not scheduler-eligible, queued for later |
+| `DEFER` | System not ready, deferred |
+| `DENY` | Admission refused |
+| `BLOCKED` | Mode blocks all operations |
+| `REQUIRES_REASSESSMENT` | Conditions may change, reassess later |
+| `REQUIRES_AUTHORIZATION` | Security session or authorization failed |
+| `REQUIRES_SAFETY_CHECK` | Safety policy not satisfied |
+| `REQUIRES_RESOURCE_CHECK` | Resources unavailable |
+| `REQUIRES_DEVICE_CHECK` | Devices unavailable |
+| `REQUIRES_RECOVERY` | System needs recovery |
+| `EXPIRED` | Request expired before evaluation |
+| `UNAVAILABLE` | Subsystem unavailable |
+
+**Admission phases (12):** `NONE`, `REQUESTED`, `VALIDATING`, `EVALUATING`, `DECIDED`, `ACCEPTED`, `DENIED`, `DEFERRED`, `BLOCKED`, `EXPIRED`, `INVALIDATED`, `CANCELLED`
+
+**Event types (18):** `REQUESTED`, `VALIDATING`, `ACCEPTED`, `QUEUED`, `DEFERRED`, `DENIED`, `BLOCKED`, `REASSESSMENT_REQUIRED`, `AUTHORIZATION_REQUIRED`, `SAFETY_CHECK_REQUIRED`, `RESOURCE_CHECK_REQUIRED`, `DEVICE_CHECK_REQUIRED`, `EXPIRED`, `INVALIDATED`, `REVOKED`, `REASSESSMENT_STARTED`, `REASSESSMENT_COMPLETED`, `COUNT`
+
+**15-step evaluation pipeline:**
+1. Request validation (non-empty ID)
+2. Request expiration check
+3. Runtime mode enforcement (all 10 modes)
+4. Readiness validation
+5. Target component availability
+6. Capability availability
+7. Security session validation
+8. Authorization validation
+9. Safety/policy validation
+10. Dependency validation
+11. Resource availability
+12. Device availability
+13. Workflow/pipeline validation
+14. Scheduler eligibility
+15. Final decision (ACCEPT)
+
+**Key APIs:**
+- `ozayn_rag_service_init/shutdown(svc, cfg)` — Lifecycle
+- `ozayn_rag_admit(svc, request, ctx, out)` — Full admission evaluation
+- `ozayn_rag_can_admit(svc, request, ctx)` — Quick boolean check
+- `ozayn_rag_reassess(svc, id, ctx, out)` — Re-evaluate decision (max 3)
+- `ozayn_rag_invalidate(svc, id)` — Invalidate a decision
+- `ozayn_rag_get_decision/request/event(svc, ...)` — Query stored records
+- `ozayn_rag_get_stats(svc)` — Evaluation statistics
+- `ozayn_rag_err_name/decision_name/phase_name/event_type_name()` — Name helpers
+
+**Dependency injection (12 subsystems):** readiness, audit, safety, resource_manager, component_registry, device_session, operation_queue, operation_history, pipeline_scheduler, workflow_orchestrator, events_engine, diagnostics
+
+> The Runtime Admission Gate is a decision and enforcement boundary. It does not replace any subsystem. It coordinates existing subsystems into a single admission decision per operation request.
+
+---
+
 ## Tests
 
 | Module | Tests |
@@ -264,7 +326,8 @@ Routing layer connecting streams, endpoints, and controlled services through val
 | Pipeline Scheduler | 113/113 |
 | Workflow Orchestrator | 95/95 |
 | Workflow Recovery | 108/108 |
-| **Total** | **1430/1430** |
+| Runtime Admission Gate | 84/84 |
+| **Total** | **1514/1514** |
 
 ## Architecture Notes
 
@@ -285,6 +348,7 @@ Routing layer connecting streams, endpoints, and controlled services through val
 - Pipeline Scheduler prefix: `ozayn_spa_`
 - Workflow Orchestrator prefix: `ozayn_wof_`
 - Workflow Recovery prefix: `ozayn_wfr_`
+- Runtime Admission Gate prefix: `ozayn_rag_`
 
 ### Step 14 — I/O Pipeline Coordination & Flow Control (`pipeline.h/.c`)
 Pipeline coordination layer for managing multi-stage data-flow paths:
