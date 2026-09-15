@@ -499,3 +499,39 @@ The Startup Recovery Coordinator orchestrates system startup through a phased pi
 **Dependency injection (11 subsystems):** lifecycle, dependency, component_registry, resource_manager, device_session, safety, diagnostics, workflow_recovery, workflow_checkpoint, state_manager, events_engine
 
 > The Startup Recovery Coordinator is a thin orchestration layer. It determines what needs recovery but does NOT automatically resume workflows. Optional subsystems (lifecycle, dependency, safety, diagnostics, etc.) are not required for startup — the system starts in READY mode regardless. Warnings are only emitted when actual inconsistencies or failures are detected, not when optional subsystems are simply unbound.
+
+### Step 20 — Operational Readiness & Runtime Mode Management (operational_readiness.h/.c)
+
+**Prefix:** `ozayn_ord_` | **Header:** `operational_readiness.h` | **Implementation:** `operational_readiness.c` | **Tests:** `tests/test_operational_readiness.c` (123 tests)
+
+The Operational Readiness Engine determines whether OZAYN is suitable for controlled operation. It aggregates state from existing subsystems, evaluates readiness conditions, manages runtime mode transitions, and gates operations according to the current mode.
+
+**Runtime modes (10):**
+| Mode | Description |
+|------|-------------|
+| `UNKNOWN` | Cannot establish reliable readiness |
+| `INITIALIZING` | Still initializing required subsystems |
+| `READY` | All required systems operational |
+| `READY_DEGRADED` | Operational but with non-critical limitations |
+| `RECOVERY` | Performing controlled recovery activities |
+| `MAINTENANCE` | Normal operations restricted for maintenance |
+| `SAFE_HOLD` | Operations restricted for safety/security |
+| `BLOCKED` | Required conditions not satisfied |
+| `SHUTTING_DOWN` | Transitioning toward shutdown |
+| `FAILED` | Critical condition prevents normal operation |
+
+**Valid transitions:** Enforced via state machine table. No arbitrary transitions allowed. Flapping protection (3 transitions within 5s triggers cooldown).
+
+**Operation gating:** `ozayn_ord_check_operation(svc, opclass)` determines if an operation class (NORMAL, DIAGNOSTIC, RECOVERY, SHUTDOWN, MAINTENANCE) is ALLOWED, RESTRICTED, BLOCKED, or UNAVAILABLE under the current mode.
+
+**Key APIs:**
+- `ozayn_ord_service_init/shutdown(svc, cfg)` — Lifecycle
+- `ozayn_ord_transition(svc, mode, trigger, reason, source)` — Mode transition
+- `ozayn_ord_transition_force(svc, ...)` — Bypass flapping protection
+- `ozayn_ord_assess(svc, out)` — Run readiness assessment
+- `ozayn_ord_check_operation(svc, opclass)` — Check operation gating
+- `ozayn_ord_gate_operation(svc, opclass, op_id)` — Gate and record operation
+
+**Dependency injection (9 subsystems):** component_registry, resource_manager, device_session, safety, diagnostics, startup_recovery, workflow_recovery, workflow_checkpoint, audit
+
+> Operational Readiness determines whether OZAYN is currently suitable for controlled operation. It does not replace authorization, safety policy, resource management, device ownership, diagnostics, recovery, or scheduling. It aggregates and evaluates their state to make mode decisions.
