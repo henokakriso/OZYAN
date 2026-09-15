@@ -304,6 +304,65 @@ The Runtime Operation Admission & Control Gate is the decision and enforcement b
 
 > The Runtime Admission Gate is a decision and enforcement boundary. It does not replace any subsystem. It coordinates existing subsystems into a single admission decision per operation request.
 
+### Step 23 — Runtime Operation Enforcement & Execution Boundary (runtime_enforcement.h/.c)
+
+**Prefix:** `ozayn_roe_` | **Header:** `runtime_enforcement.h` | **Implementation:** `runtime_enforcement.c` | **Tests:** `tests/test_runtime_enforcement.c` (91 tests)
+
+The Runtime Operation Enforcement Layer is the final control boundary before dispatch. It revalidates all conditions at the moment of dispatch to protect against TOCTOU (Time-of-Check/Time-of-Use) violations.
+
+**Error codes (35):** `OZAYN_ROE_ERR_*`
+
+**Decision outcomes (10):**
+| Decision | Description |
+|----------|-------------|
+| `ALLOW_DISPATCH` | All conditions verified, dispatch permitted |
+| `BLOCK_DISPATCH` | Critical condition failed, dispatch blocked |
+| `REQUIRE_REASSESSMENT` | Conditions may have changed, reassess |
+| `REQUIRE_AUTHORIZATION` | Security session or authorization invalid |
+| `REQUIRE_SAFETY_RECHECK` | Safety policy needs re-evaluation |
+| `REQUIRE_RESOURCE_RECHECK` | Resources need re-verification |
+| `REQUIRE_DEVICE_RECHECK` | Devices need re-verification |
+| `REQUIRE_MODE_RECHECK` | Runtime mode blocks dispatch |
+| `EXPIRED` | Enforcement request expired |
+| `UNAVAILABLE` | Subsystem unavailable |
+
+**Enforcement phases (19):** `NONE`, `REQUESTED`, `VALIDATING`, `REVALIDATING`, `SECURITY_CHECK`, `SAFETY_CHECK`, `RESOURCE_CHECK`, `DEVICE_CHECK`, `MODE_CHECK`, `TARGET_CHECK`, `APPROVED`, `DISPATCHING`, `DISPATCHED`, `REJECTED`, `BLOCKED`, `EXPIRED`, `FAILED`, `CANCELLED`, `UNAVAILABLE`
+
+**15-step enforcement pipeline:**
+1. Request validation (non-empty ID)
+2. Expiration check
+3. Operation state validation (cancelled, expired, inactive, duplicate)
+4. Runtime mode validation (all 10 modes)
+5. Readiness validation
+6. Target component availability
+7. Capability availability
+8. Security session validation
+9. Authorization validation
+10. Safety/policy validation
+11. Dependency validation
+12. Resource availability
+13. Device availability
+14. Workflow/pipeline validation
+15. Final decision (ALLOW_DISPATCH)
+
+**TOCTOU protection:** The enforcement layer rechecks all conditions at dispatch time, not at admission time. If the system state has changed since admission, dispatch is blocked.
+
+**Duplicate execution prevention:** Operations that have already been completed, cancelled, expired, or failed are blocked from re-dispatch.
+
+**Key APIs:**
+- `ozayn_roe_service_init/shutdown(svc, cfg)` — Lifecycle
+- `ozayn_roe_enforce(svc, request, ctx, out)` — Full enforcement evaluation
+- `ozayn_roe_can_dispatch(svc, request, ctx)` — Quick boolean check
+- `ozayn_roe_reassess(svc, id, ctx, out)` — Re-evaluate decision (max 3)
+- `ozayn_roe_invalidate(svc, id)` — Invalidate a decision
+- `ozayn_roe_get_decision/request/event(svc, ...)` — Query stored records
+- `ozayn_roe_get_stats(svc)` — Evaluation statistics
+- `ozayn_roe_err_name/decision_name/phase_name/event_type_name()` — Name helpers
+
+**Dependency injection (15 subsystems):** readiness, audit, safety, resource_manager, component_registry, device_session, operation_queue, operation_history, pipeline_scheduler, workflow_orchestrator, pipeline_coordinator, events_engine, diagnostics, command_router, mode_transition_policy
+
+> The Runtime Enforcement Layer is the final control boundary before dispatch. It does not execute operations, perform authentication, authorize, manage resources, manage devices, schedule, orchestrate workflows, or dispatch commands itself. It verifies that previously established controls remain valid at the moment of dispatch.
+
 ---
 
 ## Tests
@@ -327,7 +386,8 @@ The Runtime Operation Admission & Control Gate is the decision and enforcement b
 | Workflow Orchestrator | 95/95 |
 | Workflow Recovery | 108/108 |
 | Runtime Admission Gate | 84/84 |
-| **Total** | **1514/1514** |
+| Runtime Enforcement | 91/91 |
+| **Total** | **1605/1605** |
 
 ## Architecture Notes
 
@@ -349,6 +409,7 @@ The Runtime Operation Admission & Control Gate is the decision and enforcement b
 - Workflow Orchestrator prefix: `ozayn_wof_`
 - Workflow Recovery prefix: `ozayn_wfr_`
 - Runtime Admission Gate prefix: `ozayn_rag_`
+- Runtime Enforcement prefix: `ozayn_roe_`
 
 ### Step 14 — I/O Pipeline Coordination & Flow Control (`pipeline.h/.c`)
 Pipeline coordination layer for managing multi-stage data-flow paths:
