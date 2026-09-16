@@ -439,7 +439,8 @@ HISTORY / AUDIT
 | Runtime Admission Gate | 84/84 |
 | Runtime Enforcement | 91/91 |
 | Execution Result | 105/105 |
-| **Total** | **1710/1710** |
+| Operational Timeline | 113/113 |
+| **Total** | **1823/1823** |
 
 ## Architecture Notes
 
@@ -463,6 +464,7 @@ HISTORY / AUDIT
 - Runtime Admission Gate prefix: `ozayn_rag_`
 - Runtime Enforcement prefix: `ozayn_roe_`
 - Execution Result prefix: `ozayn_xr_`
+- Operational Timeline prefix: `ozayn_otl_`
 
 ### Step 14 — I/O Pipeline Coordination & Flow Control (`pipeline.h/.c`)
 Pipeline coordination layer for managing multi-stage data-flow paths:
@@ -749,3 +751,65 @@ The Mode Transition Policy Engine provides a structured evaluation layer on top 
 **Dependency injection (5 subsystems):** readiness (Step 20), audit (Section 03), safety, resource_manager, component_registry
 
 > The Mode Transition Policy Engine evaluates and decides on mode transitions. It does not directly modify the operational readiness mode — the caller must apply the decision using the Operational Readiness Engine's transition function.
+
+---
+
+### Step 25 — Runtime Event Correlation & Operational Timeline Foundation (`operational_timeline.h/.c`)
+
+**Prefix:** `ozayn_otl_` | **Header:** `operational_timeline.h` | **Implementation:** `operational_timeline.c` | **Tests:** `tests/test_operational_timeline.c` (113 tests)
+
+Provides the data model and query infrastructure for correlating runtime events across subsystems, building operational timelines that show the causal chain of events for any given operation, request, or workflow execution.
+
+```text
+EVENTS (from all subsystems)
+      ↓
+NORMALIZATION (common event model)
+      ↓
+CORRELATION (operation / request / workflow / pipeline)
+      ↓
+TIMELINE ASSEMBLY (event chains with relationships)
+      ↓
+CONSISTENCY CHECK
+      ↓
+QUERY / OBSERVABILITY
+```
+
+**Error codes (18):** `OZAYN_OTL_ERR_*`
+
+**Event categories (24):** SYSTEM, STARTUP, SHUTDOWN, LIFECYCLE, COMPONENT, CAPABILITY, OPERATION, QUEUE, SCHEDULER, WORKFLOW, PIPELINE, ADMISSION, ENFORCEMENT, EXECUTION, RECONCILIATION, RESOURCE, DEVICE, IO, SECURITY, SAFETY, DIAGNOSTIC, RECOVERY, CONFIGURATION, ERROR
+
+**Event states (5):** NORMAL, DUPLICATE_DETECTED, OUT_OF_ORDER, LATE_ARRIVAL, INCONSISTENCY_DETECTED
+
+**Timeline states (9):** CREATED, ACTIVE, COMPLETED, FAILED, PARTIAL, CANCELLED, EXPIRED, UNKNOWN, UNAVAILABLE
+
+**Relationship types (13):** NONE, PARENT, CHILD, PRECEDES, FOLLOWS, CAUSED_BY, RESULT_OF, PART_OF, RETRY_OF, COMPENSATES, RECONCILES, DEPENDS_ON, AFFECTS
+
+**Correlation confidence (6):** EXACT, EXPLICIT, DERIVED, PARTIAL, UNKNOWN, INVALID
+
+**Event emission types (16):** TIMELINE_CREATED, TIMELINE_UPDATED, TIMELINE_COMPLETED, TIMELINE_FAILED, TIMELINE_PARTIAL, TIMELINE_EXPIRED, CORRELATION_STARTED, CORRELATED, CORRELATION_PARTIAL, CORRELATION_UNKNOWN, CORRELATION_INVALID, DUPLICATE_DETECTED, OUT_OF_ORDER, LATE_ARRIVAL, INCONSISTENCY_DETECTED, RECONCILIATION_REQUIRED
+
+**Key types:**
+- `ozayn_otl_event_t` — Normalized event with 24+ correlation fields (operation_id, request_id, workflow_id, pipeline_id, source/target component, correlation_id, parent_event_id, etc.)
+- `ozayn_otl_timeline_t` — Bounded timeline with event references, state machine, and correlation metadata
+- `ozayn_otl_edge_t` — Relationship edge between events (from → to, type, confidence)
+- `ozayn_otl_service_t` — Service with 512-event ring buffer, 32-timeline ring buffer, 512-edge buffer, stats, and 10 subsystem pointers
+
+**Key functions:**
+- `ozayn_otl_event_ingest()` / `ozayn_otl_event_ingest_simple()` — Ingest normalized events
+- `ozayn_otl_event_get()` / `ozayn_otl_event_get_by_*()` — Query events (by operation, request, correlation, category, component, severity, time range, recent)
+- `ozayn_otl_event_get_duplicate_check()` — Check for duplicate events
+- `ozayn_otl_event_set_correlation()` / `ozayn_otl_event_set_parent()` / `ozayn_otl_event_set_description()` — Modify event metadata
+- `ozayn_otl_relationship_add()` / `ozayn_otl_relationship_get_by_event()` — Manage event relationships
+- `ozayn_otl_timeline_create()` / `ozayn_otl_timeline_add_event()` / `ozayn_otl_timeline_complete()` — Timeline lifecycle
+- `ozayn_otl_timeline_get()` / `ozayn_otl_timeline_get_by_*()` / `ozayn_otl_timeline_get_active()` — Query timelines
+- `ozayn_otl_timeline_get_events()` / `ozayn_otl_timeline_get_children()` / `ozayn_otl_timeline_get_predecessors()` / `ozayn_otl_timeline_get_successors()` — Navigate event chains
+- `ozayn_otl_consistency_check()` — Verify timeline consistency
+- `ozayn_otl_shutdown_drain()` — Identify active timelines during shutdown
+- `ozayn_otl_retention_prune()` — Remove old events by count or age
+- `ozayn_otl_*_name()` — Name helpers for all enums
+
+**Limits:** 512 max events, 32 max timelines, 128 max events per timeline, 64 max query results
+
+**Dependency injection (10 subsystems):** operation_history, workflow_orchestrator, pipeline_coordinator, pipeline_scheduler, execution_result, runtime_admission_gate, runtime_enforcement, diagnostics, events_engine, audit
+
+> The Operational Timeline provides observability and correlation across runtime events. It does not make admission decisions, enforce execution boundaries, or reconcile execution results — those responsibilities remain with their respective subsystems.

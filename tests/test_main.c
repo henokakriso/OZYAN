@@ -139,6 +139,7 @@ extern int run_cr_mode_transition_policy_tests(void);
 extern int run_cr_runtime_admission_gate_tests(void);
 extern int run_cr_runtime_enforcement_tests(void);
 extern int run_cr_execution_result_tests(void);
+extern int run_cr_operational_timeline_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -296,6 +297,7 @@ int main(void) {
     suite_fail = run_cr_runtime_admission_gate_tests();  suite_pass = 84 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_cr_runtime_enforcement_tests();     suite_pass = 84 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_cr_execution_result_tests();       suite_pass = 105 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_cr_operational_timeline_tests();    suite_pass = 120 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");
