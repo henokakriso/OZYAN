@@ -813,3 +813,74 @@ QUERY / OBSERVABILITY
 **Dependency injection (10 subsystems):** operation_history, workflow_orchestrator, pipeline_coordinator, pipeline_scheduler, execution_result, runtime_admission_gate, runtime_enforcement, diagnostics, events_engine, audit
 
 > The Operational Timeline provides observability and correlation across runtime events. It does not make admission decisions, enforce execution boundaries, or reconcile execution results — those responsibilities remain with their respective subsystems.
+
+---
+
+### Step 26 — Operational Metrics & Performance Monitoring Foundation (`operational_metrics.h/.c`)
+
+**Prefix:** `ozayn_om_` | **Header:** `operational_metrics.h` | **Implementation:** `operational_metrics.c` | **Tests:** `tests/test_operational_metrics.c` (85 tests)
+
+Provides the metrics collection, storage, and evaluation infrastructure for monitoring all subsystems. Aggregates stats from 15 subsystems via `void*` dependency injection, supports histograms with configurable bucket boundaries, threshold-based alerting, and performance snapshots.
+
+```text
+SUBSYSTEM STATS (15 sources via void* injection)
+      ↓
+METRIC REGISTRATION (6 types × 19 categories)
+      ↓
+COLLECTION (incremental delta updates)
+      ↓
+THRESHOLD EVALUATION (warning / critical)
+      ↓
+ALERT EMISSION (ring buffer)
+      ↓
+SNAPSHOTS (point-in-time system state)
+```
+
+**Error codes (16):** `OZAYN_OM_ERR_*`
+
+**Metric types (6):** COUNTER, GAUGE, HISTOGRAM, DURATION, RATE, RATIO
+
+**Categories (19):** SYSTEM, CORE, COMPONENT, OPERATION, QUEUE, SCHEDULER, WORKFLOW, PIPELINE, EXECUTION, RESOURCE, DEVICE, IO, SECURITY, DIAGNOSTIC, RECOVERY, EVENT, ERROR, STARTUP, SHUTDOWN
+
+**Units (8):** NONE, COUNT, BYTES, US, MS, SECONDS, PERCENT, RATE_PER_SEC
+
+**Scopes (5):** GLOBAL, COMPONENT, OPERATION, WORKFLOW, PIPELINE
+
+**Threshold states (4):** NORMAL, ELEVATED, HIGH, CRITICAL
+
+**Key types:**
+- `ozayn_om_metric_def_t` — Metric definition (name, type, category, unit, scope, source)
+- `ozayn_om_counter_t` — Monotonically increasing counter
+- `ozayn_om_gauge_t` — Point-in-time value with min/max tracking
+- `ozayn_om_histogram_t` — Distribution with configurable bucket boundaries (up to 16 buckets)
+- `ozayn_om_duration_t` — Latency/duration tracking with min/max/count
+- `ozayn_om_rate_t` — Rate (numerator/denominator) as double
+- `ozayn_om_ratio_t` — Ratio (numerator/denominator) as double
+- `ozayn_om_threshold_t` — Warning/critical threshold with state machine
+- `ozayn_om_alert_t` — Alert event from threshold breach
+- `ozayn_om_snapshot_t` — Point-in-time system state (operations, queues, resources, latencies)
+- `ozayn_om_service_t` — Service with 256 metrics, 64 histograms, 64 thresholds, 16 snapshots
+
+**Key functions:**
+- `ozayn_om_init()` / `ozayn_om_shutdown()` — Lifecycle
+- `ozayn_om_register_metric()` / `ozayn_om_unregister_metric()` — Metric registration
+- `ozayn_om_get_metric_def()` / `ozayn_om_get_metric_by_name()` — Metric lookup
+- `ozayn_om_counter_increment()` / `ozayn_om_counter_get()` — Counter operations
+- `ozayn_om_gauge_set()` / `ozayn_om_gauge_update()` / `ozayn_om_gauge_get()` — Gauge operations
+- `ozayn_om_histogram_create()` / `ozayn_om_histogram_record()` / `ozayn_om_histogram_get()` — Histogram operations
+- `ozayn_om_duration_record()` / `ozayn_om_duration_get()` — Duration tracking
+- `ozayn_om_rate_update()` / `ozayn_om_rate_get()` — Rate computation
+- `ozayn_om_ratio_update()` / `ozayn_om_ratio_get()` — Ratio computation
+- `ozayn_om_threshold_register()` / `ozayn_om_threshold_evaluate()` / `ozayn_om_threshold_get_state()` — Threshold management
+- `ozayn_om_alert_get()` / `ozayn_om_alert_get_recent()` — Alert queries
+- `ozayn_om_snapshot_create()` / `ozayn_om_snapshot_get()` / `ozayn_om_snapshot_get_latest()` — Snapshots
+- `ozayn_om_collect_all()` — Collect from all 15 subsystems
+- `ozayn_om_collect_*_metrics()` — Per-subsystem collection (operation, queue, scheduler, workflow, pipeline, execution, failure, resource, event, admission, enforcement, diagnostic, recovery, health)
+- `ozayn_om_shutdown_drain()` — Pending metrics/snapshots at shutdown
+- `ozayn_om_*_name()` — Name helpers for all enums
+
+**Limits:** 256 max metrics, 64 max histograms, 64 max thresholds, 16 max snapshots, 16 max histogram buckets
+
+**Dependency injection (15 subsystems):** operation_queue, operation_history, pipeline_scheduler, workflow_orchestrator, pipeline_coordinator, execution_result, runtime_admission_gate, runtime_enforcement, operational_timeline, resource_manager, diagnostics, events_engine, health_tracker, audit, workflow_recovery
+
+> The Operational Metrics subsystem provides observability into system health and performance. It does not enforce thresholds or make routing decisions — it only collects, stores, and evaluates metrics for external consumers.
