@@ -884,3 +884,74 @@ SNAPSHOTS (point-in-time system state)
 **Dependency injection (15 subsystems):** operation_queue, operation_history, pipeline_scheduler, workflow_orchestrator, pipeline_coordinator, execution_result, runtime_admission_gate, runtime_enforcement, operational_timeline, resource_manager, diagnostics, events_engine, health_tracker, audit, workflow_recovery
 
 > The Operational Metrics subsystem provides observability into system health and performance. It does not enforce thresholds or make routing decisions — it only collects, stores, and evaluates metrics for external consumers.
+
+---
+
+## Step 27 — Operational Alert & Notification Management Foundation
+
+**Prefix:** `ozayn_oan_`
+
+**Error codes (23):** `OZAYN_OAN_ERR_*`
+
+**Categories (17):** SYSTEM, PERFORMANCE, RESOURCE, DEVICE, OPERATION, WORKFLOW, PIPELINE, EXECUTION, FAILURE, SECURITY, SAFETY, READINESS, RECOVERY, CONFIGURATION, EVENT, STORAGE, CAPACITY
+
+**Severity levels (5):** INFO, LOW, MEDIUM, HIGH, CRITICAL
+
+**Alert states (8):** CREATED, ACTIVE, ACKNOWLEDGED, SUPPRESSED, RESOLVED, EXPIRED, CANCELLED, CLOSED
+
+**Alert sources (14):** EVENT_ENGINE, TIMELINE, METRICS, DIAGNOSTICS, HEALTH, READINESS, RESOURCE, FAILURE, OPERATION, WORKFLOW, PIPELINE, SECURITY, SAFETY, MANUAL
+
+**Trigger types (13):** EVENT, METRIC_THRESHOLD, FAILURE, HEALTH_CHANGE, RESOURCE_THRESHOLD, DEVICE_STATE, READINESS_CHANGE, MODE_CHANGE, OPERATION_FAILURE, WORKFLOW_FAILURE, PIPELINE_FAILURE, RECOVERY_FAILURE, CONFIG_CHANGE
+
+**Notification channels (6):** INTERNAL_EVENT, LOCAL_LOG, SYSTEM_NOTIFICATION, EMAIL, WEBHOOK, FUTURE
+
+**Notification states (9):** CREATED, QUEUED, SENDING, SENT, DELIVERED, FAILED, CANCELLED, EXPIRED, RETRYING
+
+**Limits:** 256 max alerts, 128 max rules, 64 max notifications, 32 max policies, 64 max dedup entries
+
+**Key features:**
+- Alert lifecycle with state machine validation (8 states, 14 valid transitions)
+- Rule evaluation with warning/critical thresholds, cooldown windows, and dedup suppression
+- Duplicate detection with configurable window-based grouping
+- Correlation ID support for linking alerts across subsystems
+- Alert grouping via group keys
+- Notification creation/advance/cancel with bounded retry (max 3 attempts)
+- Notification policies with category masks and channel configuration
+- Rate limiting (per 60-second sliding window for both alerts and notifications)
+- Expiration cleanup
+- Alert summary with counts by severity, state, and acknowledgment status
+- Subsystem bind (6 subsystems: operational_metrics, operational_timeline, diagnostics, resource_manager, startup_recovery, events_engine)
+
+**Key types:**
+- `ozayn_oan_alert_t` — Alert with category, severity, state, source, trigger, references, and timestamps
+- `ozayn_oan_rule_t` — Alert rule with thresholds, cooldown, and dedup window
+- `ozayn_oan_notification_t` — Notification with channel, recipient, retry state
+- `ozayn_oan_policy_t` — Notification policy with severity filter, category masks, and rate limits
+- `ozayn_oan_dedup_t` — Deduplication entry with window tracking
+- `ozayn_oan_service_t` — Service with 256 alerts, 128 rules, 64 notifications, 32 policies, 64 dedup entries
+
+**Key functions:**
+- `ozayn_oan_init()` / `ozayn_oan_shutdown()` — Lifecycle
+- `ozayn_oan_bind_subsystems()` — Bind 6 subsystem pointers
+- `ozayn_oan_rule_create()` / `ozayn_oan_rule_get()` / `ozayn_oan_rule_remove()` — Rule management
+- `ozayn_oan_rule_enable()` / `ozayn_oan_rule_disable()` — Rule activation
+- `ozayn_oan_rule_evaluate()` — Evaluate rule against current value
+- `ozayn_oan_alert_create()` / `ozayn_oan_alert_get()` / `ozayn_oan_alert_get_by_correlation()` — Alert creation and lookup
+- `ozayn_oan_alert_activate()` / `ozayn_oan_alert_acknowledge()` / `ozayn_oan_alert_suppress()` — State transitions
+- `ozayn_oan_alert_resolve()` / `ozayn_oan_alert_expire()` / `ozayn_oan_alert_cancel()` — State transitions
+- `ozayn_oan_alert_set_refs()` / `ozayn_oan_alert_set_group_key()` — Alert metadata
+- `ozayn_oan_alert_list_active()` / `ozayn_oan_alert_list_by_severity()` / `ozayn_oan_alert_list_by_category()` — Queries
+- `ozayn_oan_alert_list_by_source()` / `ozayn_oan_alert_active_count()` / `ozayn_oan_alert_total_count()` — Queries
+- `ozayn_oan_summary()` — Aggregate alert summary
+- `ozayn_oan_dedup_check()` / `ozayn_oan_dedup_register()` / `ozayn_oan_dedup_cleanup()` — Deduplication
+- `ozayn_oan_notif_create()` / `ozayn_oan_notif_get()` / `ozayn_oan_notif_cancel()` — Notification lifecycle
+- `ozayn_oan_notif_advance()` / `ozayn_oan_notif_list_by_alert()` / `ozayn_oan_notif_pending_count()` — Notification management
+- `ozayn_oan_policy_create()` / `ozayn_oan_policy_get()` / `ozayn_oan_policy_enable()` / `ozayn_oan_policy_disable()` — Policy management
+- `ozayn_oan_policy_set_category()` / `ozayn_oan_policy_set_channel()` / `ozayn_oan_policy_evaluate()` — Policy configuration
+- `ozayn_oan_rate_check_alerts()` / `ozayn_oan_rate_record_alert()` — Alert rate limiting
+- `ozayn_oan_rate_check_notifications()` / `ozayn_oan_rate_record_notification()` — Notification rate limiting
+- `ozayn_oan_cleanup_expired()` — Expired alert cleanup
+- `ozayn_oan_shutdown_drain()` — Pending alert/notification counts at shutdown
+- `ozayn_oan_*_name()` — Name helpers for all enums
+
+> The Operational Alert & Notification Management subsystem handles alert lifecycle management and notification routing. It integrates with the metrics thresholds, timeline events, diagnostics, and recovery subsystems to provide comprehensive operational alerting.
