@@ -955,3 +955,94 @@ SNAPSHOTS (point-in-time system state)
 - `ozayn_oan_*_name()` — Name helpers for all enums
 
 > The Operational Alert & Notification Management subsystem handles alert lifecycle management and notification routing. It integrates with the metrics thresholds, timeline events, diagnostics, and recovery subsystems to provide comprehensive operational alerting.
+
+---
+
+## Step 28 — Operational Access, Session & Command Authority Management Foundation
+
+**Prefix:** `ozayn_oac_`
+
+**Error codes (23):** `OZAYN_OAC_ERR_*`
+
+**Access levels (5):** NONE, OBSERVE, DIAGNOSTIC, OPERATE, ADMIN
+
+**Context states (6):** CREATED, ACTIVE, VALIDATED, EXPIRED, REVOKED, TERMINATED
+
+**Authority states (9):** REQUESTED, VALIDATING, AUTHORIZED, DENIED, EXPIRED, REVOKED, INVALID, CONSUMED, CANCELLED
+
+**Scope types (7):** SYSTEM_WIDE, COMPONENT_SPECIFIC, CAPABILITY_SPECIFIC, OPERATION_SPECIFIC, WORKFLOW_SPECIFIC, DEVICE_SPECIFIC, RESOURCE_SPECIFIC
+
+**Event types (16):** ACCESS_CREATED, ACCESS_VALIDATED, ACCESS_DENIED, ACCESS_EXPIRED, ACCESS_REVOKED, AUTHORITY_REQUESTED, AUTHORITY_GRANTED, AUTHORITY_DENIED, AUTHORITY_EXPIRED, AUTHORITY_REVOKED, AUTHORITY_CONSUMED, AUTHORITY_INVALIDATED, DUPLICATE_ATTEMPT, STALE_AUTHORITY, SESSION_INVALIDATED, MODE_CHANGE_INVALIDATED
+
+**Limits:** 64 max access contexts, 128 max authorities, 64 max authority history, 64 max validation log entries
+
+**Key design:** Operational Authority is a bounded Control Room execution context derived from the authoritative Section 03 security system. It does NOT create, grant, escalate, or replace permissions. This is an ACCESS CONTROL INTEGRATION layer.
+
+**Architecture:**
+```
+SECURITY SESSION
+      ↓
+CONTROL ROOM ACCESS CONTEXT
+      ↓
+OPERATIONAL AUTHORITY
+      ↓
+CONTROL REQUEST
+      ↓
+ADMISSION
+      ↓
+ENFORCEMENT
+      ↓
+COMMAND ROUTER
+      ↓
+EXECUTION
+```
+
+**Key features:**
+- Access context lifecycle with state machine validation (6 states, 8 valid transitions)
+- Authority lifecycle with state machine validation (9 states, 16 valid transitions)
+- Session binding — authority invalid when session expires or is revoked
+- Identity binding — cross-checks identity on validation
+- Operation binding — authority scoped to specific request/operation
+- Duplicate authority detection (same request+operation)
+- One-time authority consumption (consume prevents reuse)
+- Batch invalidation by session or context
+- Expiration cleanup for contexts and authorities
+- Authority history for post-consumption audit
+- Validation log (ring buffer, 64 entries)
+- Subsystem bind (6 subsystems: session_service, authorization_service, audit_service, event_engine, operational_metrics, operational_alert)
+
+**Key types:**
+- `ozayn_oac_access_ctx_t` — Access context binding session to Control Room access level and scope
+- `ozayn_oac_authority_t` — Bounded operation-specific authority derived from context
+- `ozayn_oac_validation_entry_t` — Validation log entry
+- `ozayn_oac_stats_t` — Aggregate statistics
+- `ozayn_oac_service_t` — Service with 64 contexts, 128 authorities, 64 history, 64 log entries
+
+**Key functions:**
+- `ozayn_oac_init()` / `ozayn_oac_shutdown()` — Lifecycle
+- `ozayn_oac_bind_subsystems()` — Bind 6 subsystem pointers
+- `ozayn_oac_context_create()` / `ozayn_oac_context_get()` / `ozayn_oac_context_validate()` — Context lifecycle
+- `ozayn_oac_context_expire()` / `ozayn_oac_context_revoke()` / `ozayn_oac_context_terminate()` — Context state transitions
+- `ozayn_oac_context_list_by_identity()` / `ozayn_oac_context_active_count()` / `ozayn_oac_context_total_count()` — Context queries
+- `ozayn_oac_authority_create()` / `ozayn_oac_authority_get()` / `ozayn_oac_authority_validate()` — Authority lifecycle
+- `ozayn_oac_authority_consume()` — One-time authority consumption
+- `ozayn_oac_authority_expire()` / `ozayn_oac_authority_revoke()` / `ozayn_oac_authority_cancel()` — Authority state transitions
+- `ozayn_oac_authority_invalidate_by_session()` / `ozayn_oac_authority_invalidate_by_context()` — Batch invalidation
+- `ozayn_oac_authority_list_by_session()` / `ozayn_oac_authority_list_by_context()` — Authority queries
+- `ozayn_oac_history_find()` — Post-consumption audit lookup
+- `ozayn_oac_revoke_all_for_session()` / `ozayn_oac_expire_all_for_context()` — Batch operations
+- `ozayn_oac_cleanup_expired()` — Expired context/authority cleanup
+- `ozayn_oac_validation_log_count()` / `ozayn_oac_get_stats()` — Diagnostics
+- `ozayn_oac_*_name()` — Name helpers for all enums
+
+**Security invariants preserved:**
+- FAIL CLOSED — unavailable security state blocks operations
+- DEFAULT DENY — no implicit authority granted
+- NO PRIVILEGE ESCALATION — authority cannot grant permissions
+- NO IDENTITY SUBSTITUTION — authority bound to originating session
+- NO AUTHORITY REUSE — consumed authority cannot be reused
+- NO UNBOUNDED AUTHORITY — all contexts and authorities have expiration
+- NO STALE AUTHORITY — session revocation invalidates related authority
+- NO SECRET LOGGING — validation log contains only safe references
+
+> The Operational Access subsystem is an integration layer. It consumes authoritative security decisions from Section 03 and bounds them to specific Control Room operations. It does NOT authenticate, authorize, or manage permissions itself.
