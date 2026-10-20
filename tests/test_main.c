@@ -143,6 +143,7 @@ extern int run_cr_operational_timeline_tests(void);
 extern int run_cr_operational_metrics_tests(void);
 extern int run_cr_operational_alert_tests(void);
 extern int run_cr_operational_access_tests(void);
+extern int run_cr_operational_status_tests(void);
 
 /* Failure mode test declarations */
 extern int run_failure_tests(void);
@@ -304,6 +305,7 @@ int main(void) {
     suite_fail = run_cr_operational_metrics_tests();     suite_pass = 85 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_cr_operational_alert_tests();       suite_pass = 66 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
     suite_fail = run_cr_operational_access_tests();     suite_pass = 56 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
+    suite_fail = run_cr_operational_status_tests();    suite_pass = 27 - suite_fail; total_pass += suite_pass; total_fail += suite_fail;
 
     /* Failure mode tests */
     printf("\n  --- FAILURE MODE TESTS ---");

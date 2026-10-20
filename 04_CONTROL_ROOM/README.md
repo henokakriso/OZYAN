@@ -1046,3 +1046,72 @@ EXECUTION
 - NO SECRET LOGGING — validation log contains only safe references
 
 > The Operational Access subsystem is an integration layer. It consumes authoritative security decisions from Section 03 and bounds them to specific Control Room operations. It does NOT authenticate, authorize, or manage permissions itself.
+
+---
+
+## Step 29 — Control Room Integration & Operational Status Consolidation
+
+**Prefix:** `ozayn_ost_`
+
+**Error codes (12):** `OZAYN_OST_OK`, `OZAYN_OST_ERR_NULL`, `OZAYN_OST_ERR_NOT_INITIALIZED`, `OZAYN_OST_ERR_ALREADY_INITIALIZED`, `OZAYN_OST_ERR_INVALID_PARAM`, `OZAYN_OST_ERR_NOT_FOUND`, `OZAYN_OST_ERR_FULL`, `OZAYN_OST_ERR_DUPLICATE`, `OZAYN_OST_ERR_CONCURRENCY`, `OZAYN_OST_ERR_PROVIDER_FAILED`, `OZAYN_OST_ERR_REFRESH_PARTIAL`, `OZAYN_OST_ERR_REFRESH_FAILED`
+
+**Operational states (6):** UNKNOWN, INITIALIZING, OPERATIONAL, DEGRADED, UNAVAILABLE, ERROR
+
+**Canonical components (10):**
+- `core.runtime` (required) — Core runtime state
+- `core.modules` (optional) — Module manager
+- `core.tasks` (optional) — Task manager
+- `core.processes` (optional) — Process manager
+- `control.room` (required) — Control Room lifecycle/core state
+- `control.readiness` (optional) — Operational readiness mode and flapping
+- `control.diagnostics` (optional) — Diagnostics findings
+- `control.metrics` (optional) — Metrics collection failures/alerts
+- `control.alerts` (optional) — Active alert severity
+- `platform.capabilities` (optional) — Platform capability registry
+
+**Limits:** 16 max components, 8 max warnings per snapshot, bounded detail strings
+
+**Key design:** Read-only consolidation layer. Refresh never executes commands, mutates subsystems, performs remediation, or replaces authorization. Missing optional subsystems remain UNKNOWN and do not make the system unavailable. Failed provider reads preserve the last valid component state.
+
+**Overall state derivation (fail-closed):**
+- Required component ERROR → ERROR
+- Required component UNAVAILABLE/UNKNOWN → UNAVAILABLE
+- Any component ERROR/DEGRADED (or required INITIALIZING) → DEGRADED/INITIALIZING
+- All required components OPERATIONAL → OPERATIONAL
+
+**Key features:**
+- Explicit subsystem bindings via `ozayn_ost_config_t` (`ozayn_ost_bind()` re-binds atomically)
+- Built-in read-only providers for Core, Platform and Control Room subsystems
+- Custom component registration with bounded provider callbacks
+- Refresh reentrancy guard (nested refresh rejected, counted, does not corrupt state)
+- Last-valid-state preservation on provider failure
+- Monotonic refresh timestamps and bounded generation counters
+- Snapshot with per-component state, detail, required/bound flags, and refresh failures
+- Warnings list for non-operational required/degraded components
+- No secrets, environment dumps, tokens, keys, or telemetry
+
+**Key types:**
+- `ozayn_ost_state_t` — Consolidated operational state
+- `ozayn_ost_reading_t` — Provider result (state + safe detail)
+- `ozayn_ost_component_t` — Component registration and last valid status
+- `ozayn_ost_component_status_t` — Read-only component view
+- `ozayn_ost_snapshot_t` — Consolidated status snapshot
+- `ozayn_ost_service_t` — Service state, components, warnings, counters
+
+**Key functions:**
+- `ozayn_ost_init()` / `ozayn_ost_shutdown()` / `ozayn_ost_is_initialized()` — Lifecycle
+- `ozayn_ost_bind()` — Update subsystem bindings
+- `ozayn_ost_register_component()` — Register bounded custom status provider
+- `ozayn_ost_refresh()` — Refresh all bound components (bounded, non-blocking)
+- `ozayn_ost_get_snapshot()` / `ozayn_ost_get_component()` / `ozayn_ost_overall_state()` — Queries
+- `ozayn_ost_component_count()` — Registered component count
+- `ozayn_ost_err_name()` / `ozayn_ost_state_name()` / `ozayn_ost_refresh_result_name()` — Name helpers
+
+**Refresh guarantees:**
+- One refresh at a time; reentrant/concurrent refresh returns `OZAYN_OST_ERR_CONCURRENCY`
+- Provider failures increment failure counters without overwriting last valid state
+- Partial refresh returns `OZAYN_OST_ERR_REFRESH_PARTIAL`; total provider failure returns `OZAYN_OST_ERR_REFRESH_FAILED`
+- `last_successful_refresh_ms` advances only when no provider failed
+- Snapshot generation advances on every accepted refresh
+
+> The Operational Status subsystem consolidates existing status sources. It does NOT diagnose, remediate, authenticate, or control subsystems. Providers are read-only status readers and must not expose secrets.
